@@ -1,49 +1,85 @@
-import { create } from "zustand";
-import { Building } from "../../types";
-import { axialToPixel } from "../../lib/hex";
+// ===================== Types =====================
+export type BuildingType = 'house' | 'factory' | 'shop'
 
-type GameState = {
-  coins: number;
-  buildings: Building[];
-  spend: (v: number) => boolean;
 
-  addBuilding: (b: Omit<Building, 'id'>) => void;
+export type Building = {
+id: string
+type: BuildingType
+x: number
+y: number
+level: number
+baseIncomePerMinute: number
+}
 
-  // NEW:
-  addBuildingAt: (opts: {
-    q: number;
-    r: number;
-    type: Building['type'];
-    level?: number;
-    incomePerHour?: number;
-  }) => void;
-};
 
-export const useGame = create<GameState>((set, get) => ({
-  coins: 500,
-  buildings: [],
+export type GameSnapshot = {
+coins: number
+buildings: Building[]
+lastTickISO: string // ISO string to compute offline gains
+}
 
-  spend: (v) => {
-    if (get().coins < v) return false;
-    set(s => ({ coins: s.coins - v }));
-    return true;
-  },
 
-  addBuilding: (b) =>
-    set(s => ({ buildings: [...s.buildings, { ...b, id: crypto.randomUUID() }] })),
+export type GameAPI = GameSnapshot & {
+// economy
+addCoins: (amount: number) => void
+canSpend: (amount: number) => boolean
+spend: (amount: number) => boolean
 
-  addBuildingAt: ({ q, r, type, level = 1, incomePerHour = 10 }) =>
-    set((s) => {
-      const { x, y } = axialToPixel({ q, r });
-      const nb: Building = {
-        id: crypto.randomUUID(),
-        type,
-        level,
-        incomePerHour,
-        position: { x, y },
-        // если Building включает coord — не забудь его:
-        coord: { q, r },
-      };
-      return { buildings: [...s.buildings, nb] };
-    }),
-}));
+
+// buildings
+addBuilding: (b: Omit<Building, 'id' | 'level' | 'baseIncomePerMinute'> & { id?: string; level?: number; baseIncomePerMinute?: number }) => Building
+removeBuilding: (id: string) => void
+upgradeBuilding: (id: string) => void
+
+
+// maintenance
+reset: () => void
+}
+
+
+// ===================== Persistence =====================
+const STORAGE_KEY = 'game:v1'
+
+
+function load(): GameSnapshot | null {
+try {
+const raw = localStorage.getItem(STORAGE_KEY)
+if (!raw) return null
+const obj = JSON.parse(raw) as Partial<GameSnapshot>
+if (typeof obj.coins !== 'number' || !Array.isArray(obj.buildings)) return null
+return {
+coins: obj.coins ?? 0,
+buildings: (obj.buildings ?? []) as Building[],
+lastTickISO: obj.lastTickISO ?? new Date().toISOString(),
+}
+} catch {
+return null
+}
+}
+
+
+function save(state: GameSnapshot) {
+try {
+localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+} catch {}
+}
+
+
+// ===================== Tiny store core =====================
+let state: GameSnapshot =
+load() ?? {
+coins: 100,
+buildings: [],
+lastTickISO: new Date().toISOString(),
+}
+
+
+const listeners = new Set<() => void>()
+
+
+function setState(patch: Partial<GameSnapshot> | ((s: GameSnapshot) => Partial<GameSnapshot>)) {
+const nextPatch = typeof patch === 'function' ? patch(state) : patch
+state = { ...state, ...nextPatch }
+save(state)
+listeners.forEach((l) => l())
+}

@@ -2,3 +2,10 @@
 
 :root { --safe-bottom: env(safe-area-inset-bottom); }
 .app-shell { padding-bottom: calc(var(--safe-bottom) + 72px); }
+
+.map-root {
+  touch-action: none; /* отключает нативные жесты на самой карте */
+  -webkit-user-select: none;
+  user-select: none;
+}
+svg { display: block; }
