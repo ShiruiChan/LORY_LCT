@@ -1,10 +1,30 @@
 import React, { useEffect, useRef } from "react";
+import { useGame } from "../../store/game";
 
 export default function CityPage() {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const cRef = useRef<HTMLCanvasElement>(null);
+  const buildings = useGame((s) => s.buildings);
+  const spend = useGame((s) => s.spend);
+  const addBuilding = useGame((s) => s.addBuilding);
+
+  // кнопка построить дом
+  const handleBuild = () => {
+    const COST = 100;
+    if (!spend(COST)) {
+      alert("Недостаточно монет (нужно 100)");
+      return;
+    }
+    const canvas = cRef.current!;
+    const w = canvas.clientWidth;
+    const h = Math.round(w * 1.4);
+    const x = Math.floor(16 + Math.random() * (w - 48));
+    const y = Math.floor(16 + Math.random() * (h - 48));
+    const size = 18 + Math.floor(Math.random() * 10);
+    addBuilding({ x, y, size, level: 1 });
+  };
 
   useEffect(() => {
-    const c = ref.current!;
+    const c = cRef.current!;
     const ctx = c.getContext("2d")!;
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -20,12 +40,6 @@ export default function CityPage() {
     window.addEventListener("resize", resize);
 
     let raf = 0;
-    const blocks = Array.from({ length: 16 }).map((_, i) => ({
-      x: 20 + (i % 4) * 72,
-      y: 20 + Math.floor(i / 4) * 72,
-      s: 22 + (i % 3) * 6,
-    }));
-
     const draw = () => {
       const { width, height } = c;
       ctx.clearRect(0, 0, width, height);
@@ -49,9 +63,9 @@ export default function CityPage() {
         ctx.stroke();
       }
 
-      // дома
+      // дома из стора
       ctx.fillStyle = "#0F172A";
-      blocks.forEach((b) => ctx.fillRect(b.x, b.y, b.s, b.s));
+      buildings.forEach((b) => ctx.fillRect(b.x, b.y, b.size, b.size));
 
       raf = requestAnimationFrame(draw);
     };
@@ -60,23 +74,29 @@ export default function CityPage() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [buildings]);
 
   return (
     <div className="p-4 space-y-3">
       <h1 className="text-lg font-semibold">Город</h1>
 
       <div className="rounded-2xl overflow-hidden shadow-sm ring-1 ring-slate-200 bg-white">
-        <canvas ref={ref} className="w-full block" />
+        <canvas ref={cRef} className="w-full block" />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <button className="rounded-xl py-3 px-4 bg-slate-900 text-white font-medium active:scale-[.99]">
-          Построить дом
+        <button
+          onClick={handleBuild}
+          className="rounded-xl py-3 px-4 bg-slate-900 text-white font-medium active:scale-[.99]"
+        >
+          Построить дом (100)
         </button>
-        <button className="rounded-xl py-3 px-4 bg-white ring-1 ring-slate-300 text-slate-700 active:scale-[.99]">
+        <a
+          href="/quests"
+          className="rounded-xl py-3 px-4 bg-white ring-1 ring-slate-300 text-slate-700 text-center active:scale-[.99]"
+        >
           Задания на карте
-        </button>
+        </a>
       </div>
     </div>
   );

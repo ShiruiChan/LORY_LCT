@@ -1,25 +1,14 @@
 import React from "react";
+import { useGame } from "../../store/game";
 
 export default function QuestsPage() {
+  const buildings = useGame((s) => s.buildings);
+  const progress = Math.min(buildings.length / 3, 1);
+  const pct = Math.round(progress * 100);
+
   const quests = [
-    {
-      id: "q1",
-      title: "Пополнить кошелёк на 1000₽",
-      progress: 0.4,
-      reward: "+50",
-    },
-    {
-      id: "q2",
-      title: "Оплатить проезд с карты",
-      progress: 0.1,
-      reward: "+25",
-    },
-    {
-      id: "q3",
-      title: "Пройти 2 урока в Академии",
-      progress: 0.0,
-      reward: "+70",
-    },
+    { id: "q1", title: "Построй 3 дома", progress, reward: "+70" },
+    { id: "q2", title: "Пополнить кошелёк", progress: 0, reward: "+25" },
   ];
 
   return (
@@ -40,11 +29,15 @@ export default function QuestsPage() {
             <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-slate-900 transition-all"
-                style={{ width: `${q.progress * 100}%` }}
+                style={{
+                  width: `${
+                    q.id === "q1" ? pct : Math.round(q.progress * 100)
+                  }%`,
+                }}
               />
             </div>
             <div className="mt-2 text-xs text-slate-500">
-              {Math.round(q.progress * 100)}%
+              {q.id === "q1" ? pct : Math.round(q.progress * 100)}%
             </div>
           </li>
         ))}
