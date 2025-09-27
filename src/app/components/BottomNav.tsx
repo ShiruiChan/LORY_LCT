@@ -13,6 +13,11 @@ const linkBase = "flex flex-col items-center text-xs transition-colors";
 const active = "text-slate-900";
 const inactive = "text-slate-500";
 
+/**
+ * A fixed bottom navigation bar with five routes: city, wallet, academy,
+ * quests and profile. The currently active route is highlighted. See
+ * App.tsx for how these routes are configured.
+ */
 export default function BottomNav() {
   return (
     <nav
@@ -22,9 +27,7 @@ export default function BottomNav() {
       <div className="mx-auto max-w-md grid grid-cols-5 py-2">
         <NavLink
           to="/"
-          className={({ isActive }) =>
-            `${linkBase} ${isActive ? active : inactive}`
-          }
+          className={({ isActive }) => `${linkBase} ${isActive ? active : inactive}`}
         >
           <IconButton label="Город">
             <IconMap className="w-6 h-6" />
@@ -32,9 +35,7 @@ export default function BottomNav() {
         </NavLink>
         <NavLink
           to="/wallet"
-          className={({ isActive }) =>
-            `${linkBase} ${isActive ? active : inactive}`
-          }
+          className={({ isActive }) => `${linkBase} ${isActive ? active : inactive}`}
         >
           <IconButton label="Кошелёк">
             <IconWallet className="w-6 h-6" />
@@ -42,9 +43,7 @@ export default function BottomNav() {
         </NavLink>
         <NavLink
           to="/academy"
-          className={({ isActive }) =>
-            `${linkBase} ${isActive ? active : inactive}`
-          }
+          className={({ isActive }) => `${linkBase} ${isActive ? active : inactive}`}
         >
           <IconButton label="Академия">
             <IconAcademy className="w-6 h-6" />
@@ -52,9 +51,7 @@ export default function BottomNav() {
         </NavLink>
         <NavLink
           to="/quests"
-          className={({ isActive }) =>
-            `${linkBase} ${isActive ? active : inactive}`
-          }
+          className={({ isActive }) => `${linkBase} ${isActive ? active : inactive}`}
         >
           <IconButton label="Квесты">
             <IconQuests className="w-6 h-6" />
@@ -62,9 +59,7 @@ export default function BottomNav() {
         </NavLink>
         <NavLink
           to="/profile"
-          className={({ isActive }) =>
-            `${linkBase} ${isActive ? active : inactive}`
-          }
+          className={({ isActive }) => `${linkBase} ${isActive ? active : inactive}`}
         >
           <IconButton label="Профиль">
             <IconProfile className="w-6 h-6" />

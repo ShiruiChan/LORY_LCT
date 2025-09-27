@@ -6,20 +6,31 @@ import React, {
   useState,
 } from "react";
 
-// проверь пути под свой проект
 import { useGame } from "../../store/game";
 import HexTile from "../../components/HexTile";
+import BuildMenu, { BuildOption } from "../../components/BuildMenu";
 import type { Tile } from "../../../types";
 import { axialToPixel } from "../../../lib/hex";
 import { genHexagonGrid, assignBiomes } from "../../utils/grid";
 
-// ===== настройки =====
-const BUILD_COST = 100;
+// ===== настройки карты =====
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 3.5;
 const ZOOM_STEP = 1.2;
 
 type ViewBox = { x: number; y: number; w: number; h: number };
+
+// List of available buildings with their costs. You can extend this list
+// to add new building types without changing the core map logic. Costs
+// should reflect relative difficulty of construction within the game.
+const BUILD_OPTIONS: BuildOption[] = [
+  { type: "house", title: "Дом", cost: 100 },
+  { type: "farm", title: "Ферма", cost: 150 },
+  { type: "shop", title: "Магазин", cost: 200 },
+  { type: "factory", title: "Фабрика", cost: 300 },
+  { type: "bank", title: "Банк", cost: 500 },
+  { type: "park", title: "Парк", cost: 80 },
+];
 
 export default function CityPage() {
   const { coins, canSpend, spend, addBuildingAt, buildings } = useGame();
@@ -32,6 +43,10 @@ export default function CityPage() {
 
   // мир: шестиугольник радиуса R + биомы
   const tiles: Tile[] = useMemo(() => assignBiomes(genHexagonGrid(10), 42), []);
+
+  // ===== состояние меню строительства =====
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [clickedTile, setClickedTile] = useState<Tile | null>(null);
 
   // ===== utils =====
   const clampView = useCallback((w: number, h: number) => {
@@ -176,23 +191,37 @@ export default function CityPage() {
     [vb, clampView]
   );
 
-  // клик по тайлу → дом
+  // клик по тайлу → открываем меню строительства возле курсора
   const handleTileClick = useCallback(
-    (t: Tile) => {
-      if (!canSpend(BUILD_COST)) {
-        alert(`Недостаточно монет (нужно ${BUILD_COST})`);
+    (t: Tile, e: React.MouseEvent<SVGPolygonElement, MouseEvent>) => {
+      e.stopPropagation();
+      // Translate client coordinates to document coordinates for the menu.
+      setMenuPos({ x: e.clientX, y: e.clientY });
+      setClickedTile(t);
+    },
+    []
+  );
+
+  // обработчик выбора здания в меню
+  const handleSelectOption = useCallback(
+    (opt: BuildOption) => {
+      if (!clickedTile) return;
+      if (!canSpend(opt.cost)) {
+        alert(`Недостаточно монет (нужно ${opt.cost})`);
         return;
       }
-      if (spend(BUILD_COST)) {
-        const { q, r } = t.coord;
-        addBuildingAt({ q, r, type: "house" });
+      if (spend(opt.cost)) {
+        const { q, r } = clickedTile.coord;
+        addBuildingAt({ q, r, type: opt.type as any });
       }
+      setMenuPos(null);
+      setClickedTile(null);
     },
-    [addBuildingAt, canSpend, spend]
+    [clickedTile, canSpend, spend, addBuildingAt]
   );
 
   return (
-    <div className="p-4 space-y-3">
+    <div className="p-4 space-y-3 relative">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Город</h1>
         <div className="inline-flex rounded-xl overflow-hidden shadow ring-1 ring-slate-200">
@@ -231,12 +260,10 @@ export default function CityPage() {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUpOrCancel}
             onPointerCancel={onPointerUpOrCancel}
-            // НЕТ onWheel здесь — нативный listener добавляется в useEffect с passive:false
             style={{
               touchAction: "none",
               cursor: pointersRef.current.size ? "grabbing" : "grab",
               display: "block",
-              // Дополнительно: помогает против «цепного» скролла на некоторых браузерах
               overscrollBehavior: "none" as any,
             }}
           >
@@ -274,6 +301,19 @@ export default function CityPage() {
           </div>
         </div>
       </div>
+
+      {/* Build menu appears when a tile is clicked */}
+      {menuPos && clickedTile && (
+        <BuildMenu
+          options={BUILD_OPTIONS}
+          position={menuPos}
+          onSelect={handleSelectOption}
+          onClose={() => {
+            setMenuPos(null);
+            setClickedTile(null);
+          }}
+        />
+      )}
     </div>
   );
 }

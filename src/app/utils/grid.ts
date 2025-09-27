@@ -1,8 +1,13 @@
+// Grid generation and biome assignment utilities. These functions are
+// reproduced from the upstream repository so that the game can
+// procedurally generate a world without remote dependencies.
+
 import type { Tile } from "../../types";
-import { axialToPixel } from "../../lib/hex"; // uses your existing util
+import { axialToPixel } from "../../lib/hex";
 
-export type Biome = Tile["biome"]; // reuse your union: "water" | "grass" | "forest" | "mountain" | "desert"
+export type Biome = Tile["biome"];
 
+/** Generate a hexagonal grid of axial coordinates with a default biome. */
 export function genHexagonGrid(radius: number, biome: Biome = "grass"): Tile[] {
   const res: Tile[] = [];
   for (let q = -radius; q <= radius; q++) {
@@ -15,7 +20,8 @@ export function genHexagonGrid(radius: number, biome: Biome = "grass"): Tile[] {
   return res;
 }
 
-// fast deterministic PRNG for stable biome patterns
+// Deterministic pseudo‑random generator to assign biomes in a repeatable
+// way. Mulberry32 is used for its simplicity and speed.
 function mulberry32(seed: number) {
   return function () {
     let t = (seed += 0x6d2b79f5);
@@ -25,6 +31,7 @@ function mulberry32(seed: number) {
   };
 }
 
+/** Assign a biome to each tile based on a seeded PRNG. */
 export function assignBiomes(tiles: Tile[], seed = 1337): Tile[] {
   const rnd = mulberry32(seed);
   return tiles.map((t) => {
@@ -43,6 +50,7 @@ export function assignBiomes(tiles: Tile[], seed = 1337): Tile[] {
   });
 }
 
+/** Compute bounding box of a set of tiles in pixel space. */
 export function computeBounds(tiles: Tile[]) {
   let minX = Infinity,
     maxX = -Infinity,
@@ -58,7 +66,7 @@ export function computeBounds(tiles: Tile[]) {
   return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
 }
 
-// quick visibility test with padding (in screen space)
+/** Quick visibility test with padding in screen space. */
 export function isWithinViewport(
   px: number,
   py: number,

@@ -1,5 +1,10 @@
 import React from "react";
 
+/**
+ * SVG icons used by the navigation bar. These are copied from the
+ * upstream repository. Each icon accepts standard SVG props so
+ * consumers can set className, stroke or size.
+ */
 export const IconMap = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     viewBox="0 0 24 24"

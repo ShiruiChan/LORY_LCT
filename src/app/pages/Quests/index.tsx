@@ -1,6 +1,12 @@
 import React from "react";
 import { useGame } from "../../store/game";
 
+/**
+ * Quests page offers simple objectives for players. Completing quests
+ * could award coins or unlock additional game features. In this
+ * version the quests are static placeholders but they could be driven
+ * from Supabase in the future.
+ */
 export default function QuestsPage() {
   const buildings = useGame((s) => s.buildings);
   const progress = Math.min(buildings.length / 3, 1);
@@ -29,11 +35,7 @@ export default function QuestsPage() {
             <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-slate-900 transition-all"
-                style={{
-                  width: `${
-                    q.id === "q1" ? pct : Math.round(q.progress * 100)
-                  }%`,
-                }}
+                style={{ width: `${q.id === "q1" ? pct : Math.round(q.progress * 100)}%` }}
               />
             </div>
             <div className="mt-2 text-xs text-slate-500">

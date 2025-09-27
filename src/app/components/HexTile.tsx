@@ -2,6 +2,8 @@ import React, { useCallback, useMemo } from "react";
 import { hexPolygonPoints } from "../../lib/hex";
 import type { Tile } from "../../types";
 
+// Colour palette for each biome. These values are gentle pastels that
+// improve visual clarity on the map.
 const BIOME_FILL: Record<Tile["biome"], string> = {
   water: "#cfe9ff",
   grass: "#dff7d9",
@@ -10,7 +12,7 @@ const BIOME_FILL: Record<Tile["biome"], string> = {
   desert: "#fbe7b2",
 };
 
-// предсозданные style-объекты (не создаются заново)
+// Pre‑created style objects to avoid recreating them on every render.
 const CURSOR_DEFAULT = { cursor: "default" } as const;
 const CURSOR_POINTER = { cursor: "pointer" } as const;
 
@@ -18,25 +20,29 @@ type Props = {
   tile: Tile;
   interactive?: boolean;
   highlighted?: boolean;
-  onClick?: (t: Tile) => void;
+  /**
+   * Click handler invoked when the user clicks on a tile. If interactive
+   * is true and an onClick handler is supplied, the event will be
+   * passed through so that consumers can read the pointer coordinates.
+   */
+  onClick?: (
+    tile: Tile,
+    event: React.MouseEvent<SVGPolygonElement, MouseEvent>
+  ) => void;
 };
 
-function HexTileBase({
-  tile,
-  interactive = false,
-  highlighted = false,
-  onClick,
-}: Props) {
+function HexTileBase({ tile, interactive = false, highlighted = false, onClick }: Props) {
   const { q, r } = tile.coord;
-
-  // кэшируем строку координат шестиугольника
+  // Cache the polygon string so the points are only recomputed when q/r change.
   const points = useMemo(() => hexPolygonPoints(q, r), [q, r]);
-
-  // один стабильный колбэк (пересоздаётся только при смене tile или onClick)
-  const handleClick = useCallback(() => {
-    if (interactive && onClick) onClick(tile);
-  }, [interactive, onClick, tile]);
-
+  // Stable click handler. Note that we forward the React synthetic event
+  // so the caller can extract clientX/clientY for positioning menus.
+  const handleClick = useCallback(
+    (e: React.MouseEvent<SVGPolygonElement, MouseEvent>) => {
+      if (interactive && onClick) onClick(tile, e);
+    },
+    [interactive, onClick, tile]
+  );
   return (
     <polygon
       points={points}
@@ -49,7 +55,7 @@ function HexTileBase({
   );
 }
 
-// Мемоизация: пока tile (по ссылке), interactive, highlighted и onClick не меняются — перерендера нет
+// Memoise the component to avoid re‑rendering unless relevant props change.
 export default React.memo(
   HexTileBase,
   (prev, next) =>

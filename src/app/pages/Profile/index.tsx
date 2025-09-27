@@ -1,6 +1,12 @@
 import React from "react";
 import { useGame } from "../../store/game";
 
+/**
+ * Profile page shows a simple avatar along with the player's coins,
+ * number of buildings and completed courses. A reset button allows
+ * clearing progress. In future this page could display additional
+ * stats such as investment performance or quest achievements.
+ */
 export default function ProfilePage() {
   const coins = useGame((s) => s.coins);
   const buildings = useGame((s) => s.buildings);
@@ -36,12 +42,12 @@ export default function ProfilePage() {
           <p className="text-lg font-semibold">{coins}</p>
         </div>
         <div className="bg-white rounded-2xl p-3 shadow-sm ring-1 ring-slate-200 text-center">
-          <p className="text-xs text-slate-500">Дома</p>
+          <p className="text-xs text-slate-500">Здания</p>
           <p className="text-lg font-semibold">{buildings.length}</p>
         </div>
         <div className="bg-white rounded-2xl p-3 shadow-sm ring-1 ring-slate-200 text-center">
           <p className="text-xs text-slate-500">Курсы</p>
-          <p className="text-lg font-semibold">0/12</p>
+          <p className="text-lg font-semibold">0/ { /* placeholder */ } </p>
         </div>
       </section>
     </div>
