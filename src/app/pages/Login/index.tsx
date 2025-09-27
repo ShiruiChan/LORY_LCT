@@ -2,10 +2,6 @@ import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../store/auth";
 
-// Extend the global window object to declare our callback for the
-// Telegram login widget. When Telegram authenticates the user it will
-// call this function with a user object. We capture it and store
-// the user in our auth store.
 declare global {
   interface Window {
     telegramAuthCallback?: (user: any) => void;
@@ -18,19 +14,14 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // If user is already authenticated redirect to the home page
     if (user) {
       navigate("/", { replace: true });
       return;
     }
-    // Register global callback. The Telegram widget will invoke
-    // `telegramAuthCallback(user)` when the user completes authentication.
     window.telegramAuthCallback = (userData: any) => {
       setUser(userData);
       navigate("/", { replace: true });
     };
-    // Dynamically inject the Telegram login widget script. The bot name
-    // should be defined in your .env file under VITE_TELEGRAM_BOT_NAME.
     const botName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
     if (!botName) return;
     const container = document.getElementById("telegram-login-container");
