@@ -5,132 +5,178 @@ import React, {
   useRef,
   useState,
 } from "react";
+
+// проверь пути под свой проект
 import { useGame } from "../../store/game";
 import HexTile from "../../components/HexTile";
 import type { Tile } from "../../../types";
 import { axialToPixel } from "../../../lib/hex";
-import {
-  genHexagonGrid,
-  assignBiomes,
-  computeBounds,
-  isWithinViewport,
-} from "../../utils/grid";
-const VIEWPORT_W = 1000;
-const VIEWPORT_H = 720;
+import { genHexagonGrid, assignBiomes } from "../../utils/grid";
+
+// ===== настройки =====
+const BUILD_COST = 100;
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 3.5;
-const ZOOM_STEP = 1.1; // mouse wheel multiplier
-const BUILD_COST = 100;
+const ZOOM_STEP = 1.2;
 
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
-}
+type ViewBox = { x: number; y: number; w: number; h: number };
 
 export default function CityPage() {
   const { coins, canSpend, spend, addBuildingAt, buildings } = useGame();
-  const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  // ====== Viewport transform (pan/zoom) ======
-  const [zoom, setZoom] = useState(1);
-  const [tx, setTx] = useState(0);
-  const [ty, setTy] = useState(0);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const pointersRef = useRef<Set<number>>(new Set());
 
-  const startRef = useRef<{
-    x: number;
-    y: number;
-    tx: number;
-    ty: number;
-  } | null>(null);
+  const [vb, setVb] = useState<ViewBox>({ x: 0, y: 0, w: 1000, h: 700 });
+  const baseRef = useRef<{ w: number; h: number }>({ w: 1000, h: 700 });
 
-  const getLocalPoint = useCallback((clientX: number, clientY: number) => {
-    const el = wrapRef.current!;
-    const rect = el.getBoundingClientRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
+  // мир: шестиугольник радиуса R + биомы
+  const tiles: Tile[] = useMemo(() => assignBiomes(genHexagonGrid(10), 42), []);
+
+  // ===== utils =====
+  const clampView = useCallback((w: number, h: number) => {
+    const wMin = baseRef.current.w / ZOOM_MAX;
+    const wMax = baseRef.current.w / ZOOM_MIN;
+    const hMin = baseRef.current.h / ZOOM_MAX;
+    const hMax = baseRef.current.h / ZOOM_MIN;
+    return {
+      w: Math.max(wMin, Math.min(wMax, w)),
+      h: Math.max(hMin, Math.min(hMax, h)),
+    };
   }, []);
 
-  const screenToWorld = useCallback(
-    (sx: number, sy: number) => ({ x: (sx - tx) / zoom, y: (sy - ty) / zoom }),
-    [tx, ty, zoom]
+  const fitToScreen = useCallback(() => {
+    if (!svgRef.current || tiles.length === 0) return;
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    for (const t of tiles) {
+      const { x, y } = axialToPixel(t.coord);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const pad = 24;
+    const contentW = maxX - minX + pad * 2;
+    const contentH = maxY - minY + pad * 2;
+
+    baseRef.current = { w: contentW, h: contentH };
+    setVb({ x: minX - pad, y: minY - pad, w: contentW, h: contentH });
+  }, [tiles]);
+
+  useEffect(() => {
+    fitToScreen();
+    const ro = new ResizeObserver(() => fitToScreen());
+    if (svgRef.current?.parentElement) ro.observe(svgRef.current.parentElement);
+    return () => ro.disconnect();
+  }, [fitToScreen]);
+
+  // преобразования координат
+  const clientToWorld = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = svgRef.current!;
+      const rect = svg.getBoundingClientRect();
+      const nx = (clientX - rect.left) / rect.width;
+      const ny = (clientY - rect.top) / rect.height;
+      return { x: vb.x + nx * vb.w, y: vb.y + ny * vb.h };
+    },
+    [vb]
   );
 
-  const onWheel = useCallback(
-    (e: WheelEvent) => {
-      e.preventDefault(); // stop page scroll while interacting with map
-      const { x: lx, y: ly } = getLocalPoint(e.clientX, e.clientY);
-      const { x: wx, y: wy } = screenToWorld(lx, ly);
-      const dir = e.deltaY < 0 ? 1 : -1;
-      const nextZoom = clamp(
-        zoom * (dir > 0 ? ZOOM_STEP : 1 / ZOOM_STEP),
-        ZOOM_MIN,
-        ZOOM_MAX
-      );
-      const nextTx = lx - wx * nextZoom; // keep world point under cursor stable
-      const nextTy = ly - wy * nextZoom;
-      setZoom(nextZoom);
-      setTx(nextTx);
-      setTy(nextTy);
+  const pixelsToWorldDelta = useCallback(
+    (dx: number, dy: number) => {
+      const svg = svgRef.current!;
+      const rect = svg.getBoundingClientRect();
+      return { wx: (dx / rect.width) * vb.w, wy: (dy / rect.height) * vb.h };
     },
-    [getLocalPoint, screenToWorld, zoom]
+    [vb]
   );
+
+  // ===== НАТИВНЫЙ wheel с passive:false — окончательно убирает прокрутку страницы =====
+  const handleWheelNative = useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault(); // критично!
+      // зум вокруг курсора
+      const cursorWorld = clientToWorld(e.clientX, e.clientY);
+      const factor = e.deltaY < 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
+
+      const nextW = vb.w * factor;
+      const nextH = vb.h * factor;
+      const { w, h } = clampView(nextW, nextH);
+
+      const svg = svgRef.current!;
+      const rect = svg.getBoundingClientRect();
+      const nx = (e.clientX - rect.left) / rect.width;
+      const ny = (e.clientY - rect.top) / rect.height;
+
+      const x = cursorWorld.x - nx * w;
+      const y = cursorWorld.y - ny * h;
+
+      setVb({ x, y, w, h });
+    },
+    [clientToWorld, clampView, vb.w, vb.h]
+  );
+
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheelNative as any);
+  }, [handleWheelNative]);
+
+  // панорамирование Pointer Events
+  const dragRef = useRef<{ x: number; y: number; vb: ViewBox } | null>(null);
 
   const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      const el = wrapRef.current;
-      if (!el) return;
-      el.setPointerCapture(e.pointerId);
-      const p = getLocalPoint(e.clientX, e.clientY);
-      startRef.current = { x: p.x, y: p.y, tx, ty };
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      const svg = svgRef.current;
+      if (!svg) return;
+      svg.setPointerCapture(e.pointerId);
+      pointersRef.current.add(e.pointerId);
+      dragRef.current = { x: e.clientX, y: e.clientY, vb };
     },
-    [getLocalPoint, tx, ty]
+    [vb]
   );
 
   const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!startRef.current) return;
-      const p = getLocalPoint(e.clientX, e.clientY);
-      const dx = p.x - startRef.current.x;
-      const dy = p.y - startRef.current.y;
-      setTx(startRef.current.tx + dx);
-      setTy(startRef.current.ty + dy);
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      if (!dragRef.current) return;
+      const dx = e.clientX - dragRef.current.x;
+      const dy = e.clientY - dragRef.current.y;
+      const { wx, wy } = pixelsToWorldDelta(dx, dy);
+      const { vb: start } = dragRef.current;
+      setVb({ x: start.x - wx, y: start.y - wy, w: start.w, h: start.h });
     },
-    [getLocalPoint]
+    [pixelsToWorldDelta]
   );
 
-  const endPan = useCallback((e: React.PointerEvent) => {
-    const el = wrapRef.current;
-    if (el)
+  const onPointerUpOrCancel = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
       try {
-        el.releasePointerCapture(e.pointerId);
+        svgRef.current?.releasePointerCapture(e.pointerId);
       } catch {}
-    startRef.current = null;
-  }, []);
+      pointersRef.current.delete(e.pointerId);
+      dragRef.current = null;
+    },
+    []
+  );
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel as any);
-  }, [onWheel]);
+  // кнопки +/−/Fit
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const cx = vb.x + vb.w / 2;
+      const cy = vb.y + vb.h / 2;
+      const nextW = vb.w * factor;
+      const nextH = vb.h * factor;
+      const { w, h } = clampView(nextW, nextH);
+      setVb({ x: cx - w / 2, y: cy - h / 2, w, h });
+    },
+    [vb, clampView]
+  );
 
-  // ====== World generation ======
-  const world: Tile[] = useMemo(() => assignBiomes(genHexagonGrid(10), 42), []); // R=40 → ~4901 tiles
-
-  // ====== Zoom-to-fit on mount ======
-  useEffect(() => {
-    if (!world.length) return;
-    const { minX, maxX, minY, maxY, width, height } = computeBounds(world);
-    const pad = 24;
-    const zx = (VIEWPORT_W - pad * 2) / width;
-    const zy = (VIEWPORT_H - pad * 2) / height;
-    const nextZoom = clamp(Math.min(zx, zy), ZOOM_MIN, ZOOM_MAX);
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    setZoom(nextZoom);
-    setTx(VIEWPORT_W / 2 - cx * nextZoom);
-    setTy(VIEWPORT_H / 2 - cy * nextZoom);
-  }, [world.length]);
-
-  // ====== Click to build ======
+  // клик по тайлу → дом
   const handleTileClick = useCallback(
     (t: Tile) => {
       if (!canSpend(BUILD_COST)) {
@@ -145,77 +191,88 @@ export default function CityPage() {
     [addBuildingAt, canSpend, spend]
   );
 
-  const getBPos = (b: any) => (b.position ? b.position : { x: b.x, y: b.y });
-
-  // ====== Project tiles to screen + cull (perf) ======
-  const projected = useMemo(() => {
-    const arr: Array<{ t: Tile; sx: number; sy: number }> = [];
-    for (const t of world) {
-      const { x, y } = axialToPixel(t.coord);
-      const sx = x * zoom + tx;
-      const sy = y * zoom + ty;
-      if (isWithinViewport(sx, sy, VIEWPORT_W, VIEWPORT_H, 80)) {
-        arr.push({ t, sx, sy });
-      }
-    }
-    return arr;
-  }, [world, zoom, tx, ty]);
-
   return (
     <div className="p-4 space-y-3">
-      <div className="flex items-baseline gap-3">
-        <h1 className="text-lg font-semibold">Город (шестигранная карта)</h1>
-        <span className="text-sm text-gray-500">
-          Монеты: {Math.floor(coins)}
-        </span>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Город</h1>
+        <div className="inline-flex rounded-xl overflow-hidden shadow ring-1 ring-slate-200">
+          <button
+            className="px-3 py-2 bg-white hover:bg-slate-50"
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            title="Приблизить"
+          >
+            +
+          </button>
+          <button
+            className="px-3 py-2 bg-white hover:bg-slate-50 border-l border-slate-200"
+            onClick={() => zoomBy(ZOOM_STEP)}
+            title="Отдалить"
+          >
+            −
+          </button>
+          <button
+            className="px-3 py-2 bg-white hover:bg-slate-50 border-l border-slate-200"
+            onClick={fitToScreen}
+            title="Подогнать к экрану"
+          >
+            Fit
+          </button>
+        </div>
       </div>
 
-      <div
-        ref={wrapRef}
-        className="map-root"
-        style={{
-          width: "100%", // <-- вместо фиксированного VIEWPORT_W
-          height: "70vh", // или фиксированная высота в % экрана
-          maxWidth: VIEWPORT_W, // ограничение сверху, если нужно
-          maxHeight: VIEWPORT_H,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          overflow: "hidden",
-          touchAction: "none",
-          position: "relative",
-          background: "linear-gradient(180deg,#f8fafc,#fff)",
-        }}
-      >
-        <svg
-          width="100%" // SVG тоже растягивается
-          height="100%"
-          style={{ display: "block" }}
-        >
-          <g transform={`translate(${tx},${ty}) scale(${zoom})`}>
-            {projected.map(({ t }) => (
-              <HexTile
-                key={t.id}
-                tile={t}
-                interactive
-                onClick={() => handleTileClick(t)}
-              />
-            ))}
+      <div className="rounded-2xl overflow-hidden ring-1 ring-slate-200 bg-white">
+        <div className="h-[70vh] relative">
+          <svg
+            ref={svgRef}
+            viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
+            width="100%"
+            height="100%"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUpOrCancel}
+            onPointerCancel={onPointerUpOrCancel}
+            // НЕТ onWheel здесь — нативный listener добавляется в useEffect с passive:false
+            style={{
+              touchAction: "none",
+              cursor: pointersRef.current.size ? "grabbing" : "grab",
+              display: "block",
+              // Дополнительно: помогает против «цепного» скролла на некоторых браузерах
+              overscrollBehavior: "none" as any,
+            }}
+          >
+            <g transform="translate(0,0)">
+              {tiles.map((t) => (
+                <HexTile
+                  key={t.id}
+                  tile={t}
+                  interactive
+                  onClick={handleTileClick}
+                />
+              ))}
 
-            {buildings.map((b) => {
-              const p = getBPos(b);
-              return (
-                <g key={b.id} transform={`translate(${p.x},${p.y})`}>
-                  <rect x={-6} y={-6} width={12} height={12} fill="#0f172a" />
-                </g>
-              );
-            })}
-          </g>
-        </svg>
-      </div>
+              {buildings.map((b: any) => {
+                const { x, y } = axialToPixel(b.coord);
+                const size = 12;
+                return (
+                  <g key={b.id} transform={`translate(${x},${y})`}>
+                    <rect
+                      x={-size / 2}
+                      y={-size / 2}
+                      width={size}
+                      height={size}
+                      fill="#0f172a"
+                      pointerEvents="none"
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
 
-      <div className="text-xs text-gray-500">
-        Пан: зажми мышь/палец и двигай • Зум: колесо мыши • Пинч отключён, чтобы
-        не конфликтовать с прокруткой страницы
+          <div className="absolute bottom-3 right-3 text-xs text-slate-600 bg-white/80 backdrop-blur rounded-lg px-2 py-1 ring-1 ring-slate-200">
+            Пан — потяни / Зум — колесо / Пинч — выключен
+          </div>
+        </div>
       </div>
     </div>
   );
