@@ -10,23 +10,22 @@ const COST = 100;
 type VB = { x: number; y: number; w: number; h: number };
 
 export default function CityPage() {
-  // --- state / refs (хуки всегда сверху) ---
+  // --- hooks: всегда вверху ---
   const [world, setWorld] = useState<any>(null);
-  const [vb, setVb] = useState<VB>({ x: 0, y: 0, w: 800, h: 600 }); // базовый масштаб
+  const [vb, setVb] = useState<VB>({ x: 0, y: 0, w: 800, h: 600 }); // фиксированный базовый масштаб
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  // только pan (Pointer Events)
+  // только для панорамирования
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const lastPanRef = useRef<{ x: number; y: number } | null>(null);
 
   // store
   const spend = useGame((s) => s.spend);
-  const addBuildingAt = useGame((s: any) => s.addBuildingAt); // если добавлял эту функцию в стор
+  const addBuildingAt = useGame((s: any) => s.addBuildingAt); // если есть
   const addBuilding = useGame((s) => s.addBuilding); // fallback
   const buildings = useGame((s) => s.buildings);
 
-  // загрузка мира + центровка
+  // загрузка мира + центр
   useEffect(() => {
     (async () => {
       const w = await fetchWorld(20);
@@ -36,7 +35,7 @@ export default function CityPage() {
     })();
   }, []);
 
-  // занята ли клетка (q,r)
+  // занято ли (q,r)
   const isOccupied = (q: number, r: number) =>
     buildings?.some((b: any) => b.coord && b.coord.q === q && b.coord.r === r);
 
@@ -95,9 +94,9 @@ export default function CityPage() {
     [buildings]
   );
 
-  // --- helpers для зума колесом ---
-  const MIN_ZOOM = 0.25; // ближе (минимальная ширина = BASE_W * MIN_ZOOM)
-  const MAX_ZOOM = 4; // дальше  (максимальная ширина = BASE_W * MAX_ZOOM)
+  // ——— helpers ———
+  const MIN_ZOOM = 0.25; // 4x ближе
+  const MAX_ZOOM = 4; // 4x дальше
   const BASE_W = 800;
 
   const clampW = (w: number) =>
@@ -107,40 +106,10 @@ export default function CityPage() {
     const rect = svgRef.current!.getBoundingClientRect();
     const vx = v.x + ((clientX - rect.left) / rect.width) * v.w;
     const vy = v.y + ((clientY - rect.top) / rect.height) * v.h;
-    return { vx, vy };
+    return { vx, vy, rect };
   };
 
-  // --- Wheel зум: нативный listener с { passive:false }, чтобы блокировать скролл страницы ---
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-
-    const onWheelNative = (e: WheelEvent) => {
-      // блокируем прокрутку сайта под картой
-      e.preventDefault();
-      e.stopPropagation();
-
-      // игнорим системный pinch на трекпадах (часто приходит как Ctrl+Wheel)
-      if (e.ctrlKey) return;
-
-      const scale = e.deltaY > 0 ? 1.1 : 0.9;
-
-      setVb((cur) => {
-        if (!svgRef.current) return cur;
-        const { vx: mx, vy: my } = clientToView(e.clientX, e.clientY, cur);
-        const nextW = clampW(cur.w * scale);
-        const nextH = (nextW / cur.w) * cur.h;
-        const nx = mx - ((mx - cur.x) * nextW) / cur.w;
-        const ny = my - ((my - cur.y) * nextH) / cur.h;
-        return { x: nx, y: ny, w: nextW, h: nextH };
-      });
-    };
-
-    el.addEventListener("wheel", onWheelNative, { passive: false });
-    return () => el.removeEventListener("wheel", onWheelNative);
-  }, []);
-
-  // --- PAN (Pointer Events). Мульти-тач игнорируем (pinch отключён) ---
+  // ——— только PAN (один указатель). Мульти-тач игнорим (pinch off) ———
   const onPointerDown: React.PointerEventHandler<SVGSVGElement> = (e) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -148,7 +117,8 @@ export default function CityPage() {
     if (pointersRef.current.size === 1) {
       lastPanRef.current = { x: e.clientX, y: e.clientY };
     } else {
-      lastPanRef.current = null; // два+ пальца — ничего не делаем
+      // 2+ пальца — ничего не делаем (без pinch)
+      lastPanRef.current = null;
     }
   };
 
@@ -159,10 +129,10 @@ export default function CityPage() {
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointersRef.current.size === 1 && lastPanRef.current) {
-      const curPt = [...pointersRef.current.values()][0];
+      const cur = [...pointersRef.current.values()][0];
       const rect = svgRef.current.getBoundingClientRect();
-      const dxPx = curPt.x - lastPanRef.current.x;
-      const dyPx = curPt.y - lastPanRef.current.y;
+      const dxPx = cur.x - lastPanRef.current.x;
+      const dyPx = cur.y - lastPanRef.current.y;
 
       setVb((v) => ({
         ...v,
@@ -170,7 +140,7 @@ export default function CityPage() {
         y: v.y - dyPx * (v.h / rect.height),
       }));
 
-      lastPanRef.current = { ...curPt };
+      lastPanRef.current = { ...cur };
     }
   };
 
@@ -184,23 +154,40 @@ export default function CityPage() {
     }
   };
 
+  // ——— ЗУМ КОЛЕСОМ (оставляем). Игнорируем ctrl+wheel (трекпад-pinch в браузере) ———
+  const onWheel: React.WheelEventHandler<SVGSVGElement> = (e) => {
+    e.preventDefault(); // чтобы страница не скроллилась
+    if (!svgRef.current) return;
+
+    // Если это системный pinch через трекпад (часто приходит как ctrlKey=true), проигнорировать:
+    if (e.ctrlKey) return;
+
+    const scale = e.deltaY > 0 ? 1.1 : 0.9;
+
+    setVb((cur) => {
+      const { vx: mx, vy: my } = clientToView(e.clientX, e.clientY, cur);
+      const nextW = clampW(cur.w * scale);
+      const nextH = (nextW / cur.w) * cur.h;
+
+      // якорим под курсором
+      const nx = mx - ((mx - cur.x) * nextW) / cur.w;
+      const ny = my - ((my - cur.y) * nextH) / cur.h;
+      return { x: nx, y: ny, w: nextW, h: nextH };
+    });
+  };
+
   const loading = !world;
 
-  // --- единственный return ---
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Город</h1>
+        {/* Кнопки +- можно вернуть при желании */}
       </div>
 
       <div
-        ref={wrapRef}
         className="rounded-2xl overflow-hidden shadow-sm ring-1 ring-slate-200 bg-white"
-        style={{
-          height: 520,
-          touchAction: "none", // отключает браузерные жесты внутри контейнера (pinch/page scroll)
-          overscrollBehavior: "contain", // не прокидывать скролл на родителя
-        }}
+        style={{ height: 520 }}
       >
         {loading ? (
           <div className="h-full grid place-items-center">Загрузка карты…</div>
@@ -214,8 +201,12 @@ export default function CityPage() {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUpOrCancel}
             onPointerCancel={onPointerUpOrCancel}
-            // внимание: onWheel тут НЕ назначаем — он на wrapRef, чтобы preventDefault сработал
-            style={{ cursor: pointersRef.current.size ? "grabbing" : "grab" }}
+            onWheel={onWheel}
+            // touchAction: "none" — отключает браузерные жесты внутри SVG (в т.ч. pinch)
+            style={{
+              touchAction: "none",
+              cursor: pointersRef.current.size ? "grabbing" : "grab",
+            }}
           >
             <g transform={`translate(${HEX_SIZE * 3},${HEX_SIZE * 3})`}>
               {tiles}
