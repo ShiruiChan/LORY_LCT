@@ -10,7 +10,6 @@ const AcademyPage = lazy(() => import("./app/pages/Academy"));
 const QuestsPage = lazy(() => import("./app/pages/Quests"));
 const ProfilePage = lazy(() => import("./app/pages/Profile"));
 const LoginPage = lazy(() => import("./app/pages/Login"));
-const TelegramAuthPage = lazy(() => import("./app/pages/TelegramAuth"));
 const LessonPage = lazy(() => import("./app/pages/Academy/Lesson"));
 
 export default function App() {
@@ -33,7 +32,6 @@ export default function App() {
           <Routes>
             {/* If you decide to add login back in the future, keep this route */}
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/telegram-login" element={<TelegramAuthPage />} />
             {/* Main app routes accessible without authentication */}
             <Route path="/" element={<CityPage />} />
             <Route path="/wallet" element={<WalletPage />} />
