@@ -10,22 +10,23 @@ const COST = 100;
 type VB = { x: number; y: number; w: number; h: number };
 
 export default function CityPage() {
-  // --- hooks: всегда вверху ---
+  // --- hooks: всегда вверху, без условий ---
   const [world, setWorld] = useState<any>(null);
-  const [vb, setVb] = useState<VB>({ x: 0, y: 0, w: 800, h: 600 }); // фиксированный базовый масштаб
+  const [vb, setVb] = useState<VB>({ x: 0, y: 0, w: 800, h: 600 });
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  // только для панорамирования
+  // состояние указателей (мышь/тач/стилус)
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const lastPanRef = useRef<{ x: number; y: number } | null>(null);
+  const lastDistRef = useRef<number | null>(null);
 
   // store
   const spend = useGame((s) => s.spend);
-  const addBuildingAt = useGame((s: any) => s.addBuildingAt); // если есть
+  const addBuildingAt = useGame((s: any) => s.addBuildingAt); // если у тебя есть эта функция
   const addBuilding = useGame((s) => s.addBuilding); // fallback
   const buildings = useGame((s) => s.buildings);
 
-  // загрузка мира + центр
+  // загрузка мира и центрирование
   useEffect(() => {
     (async () => {
       const w = await fetchWorld(20);
@@ -39,7 +40,7 @@ export default function CityPage() {
   const isOccupied = (q: number, r: number) =>
     buildings?.some((b: any) => b.coord && b.coord.q === q && b.coord.r === r);
 
-  // тайлы
+  // рендер тайлов
   const tiles = useMemo(() => {
     if (!world) return null;
     return world.tiles.map((t: any) => (
@@ -83,7 +84,7 @@ export default function CityPage() {
     ));
   }, [world, buildings, spend, addBuildingAt, addBuilding]);
 
-  // здания
+  // рендер зданий
   const buildingsSvg = useMemo(
     () =>
       buildings.map((b: any) => (
@@ -94,14 +95,15 @@ export default function CityPage() {
     [buildings]
   );
 
-  // ——— helpers ———
-  const MIN_ZOOM = 0.25; // 4x ближе
-  const MAX_ZOOM = 4; // 4x дальше
+  // ------------------ жесты (Blink-style) ------------------
+  const MIN_ZOOM = 0.25; // максимально приблизиться (0.25 * baseW)
+  const MAX_ZOOM = 4; // максимально отдалиться (4 * baseW)
   const BASE_W = 800;
 
   const clampW = (w: number) =>
     Math.min(Math.max(w, BASE_W * MIN_ZOOM), BASE_W * MAX_ZOOM);
 
+  // проекция clientXY -> координата во viewBox
   const clientToView = (clientX: number, clientY: number, v: VB) => {
     const rect = svgRef.current!.getBoundingClientRect();
     const vx = v.x + ((clientX - rect.left) / rect.width) * v.w;
@@ -109,16 +111,19 @@ export default function CityPage() {
     return { vx, vy, rect };
   };
 
-  // ——— только PAN (один указатель). Мульти-тач игнорим (pinch off) ———
+  // один указатель: панорамирование; два — pinch (масштаб вокруг фокуса)
   const onPointerDown: React.PointerEventHandler<SVGSVGElement> = (e) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
     if (pointersRef.current.size === 1) {
       lastPanRef.current = { x: e.clientX, y: e.clientY };
-    } else {
-      // 2+ пальца — ничего не делаем (без pinch)
-      lastPanRef.current = null;
+      lastDistRef.current = null;
+    } else if (pointersRef.current.size === 2) {
+      const pts = [...pointersRef.current.values()];
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      lastDistRef.current = Math.hypot(dx, dy);
+      // не фиксируем «якорь» навечно — будем привязываться к текущему фокусу на каждом событии (как Blink)
     }
   };
 
@@ -128,9 +133,10 @@ export default function CityPage() {
 
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
+    // PAN (1 указатель) — инкрементально
     if (pointersRef.current.size === 1 && lastPanRef.current) {
       const cur = [...pointersRef.current.values()][0];
-      const rect = svgRef.current.getBoundingClientRect();
+      const { rect } = clientToView(cur.x, cur.y, vb);
       const dxPx = cur.x - lastPanRef.current.x;
       const dyPx = cur.y - lastPanRef.current.y;
 
@@ -142,47 +148,101 @@ export default function CityPage() {
 
       lastPanRef.current = { ...cur };
     }
+
+    // PINCH (2 указателя) — Blink style: масштаб вокруг текущего фокуса
+    if (pointersRef.current.size === 2 && lastDistRef.current) {
+      const pts = [...pointersRef.current.values()];
+      const cx = (pts[0].x + pts[1].x) / 2;
+      const cy = (pts[0].y + pts[1].y) / 2;
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const dist = Math.hypot(dx, dy);
+
+      // инкрементальный коэффициент: >1 — приближение (пальцы расходятся)
+      const deltaScale = lastDistRef.current / dist;
+
+      setVb((cur) => {
+        const { vx: mx, vy: my } = clientToView(cx, cy, cur);
+        const rawW = cur.w * deltaScale;
+        const nextW = clampW(rawW);
+        const nextH = (nextW / cur.w) * cur.h;
+
+        // якорим точку под фокусом: она остаётся под тем же пикселем
+        const nx = mx - ((mx - cur.x) * nextW) / cur.w;
+        const ny = my - ((my - cur.y) * nextH) / cur.h;
+
+        return { x: nx, y: ny, w: nextW, h: nextH };
+      });
+
+      // обновляем «предыдущее» для следующего инкремента
+      lastDistRef.current = dist;
+      // lastPanRef здесь не нужен — паноромирование заложено через смену фокуса mx,my
+    }
   };
 
   const onPointerUpOrCancel: React.PointerEventHandler<SVGSVGElement> = (e) => {
     pointersRef.current.delete(e.pointerId);
     if (pointersRef.current.size === 1) {
+      // переходим обратно к pan
       const only = [...pointersRef.current.values()][0];
       lastPanRef.current = { ...only };
+      lastDistRef.current = null;
     } else if (pointersRef.current.size === 0) {
       lastPanRef.current = null;
+      lastDistRef.current = null;
     }
   };
 
-  // ——— ЗУМ КОЛЕСОМ (оставляем). Игнорируем ctrl+wheel (трекпад-pinch в браузере) ———
+  // колесо мыши — такое же якорение под курсором
   const onWheel: React.WheelEventHandler<SVGSVGElement> = (e) => {
-    e.preventDefault(); // чтобы страница не скроллилась
+    e.preventDefault();
     if (!svgRef.current) return;
 
-    // Если это системный pinch через трекпад (часто приходит как ctrlKey=true), проигнорировать:
-    if (e.ctrlKey) return;
-
-    const scale = e.deltaY > 0 ? 1.1 : 0.9;
-
+    const scale = e.deltaY > 0 ? 1.1 : 0.9; // вниз — отдалить, вверх — приблизить
     setVb((cur) => {
-      const { vx: mx, vy: my } = clientToView(e.clientX, e.clientY, cur);
-      const nextW = clampW(cur.w * scale);
+      const { vx: mx, vy: my, rect } = clientToView(e.clientX, e.clientY, cur);
+      const rawW = cur.w * scale;
+      const nextW = clampW(rawW);
       const nextH = (nextW / cur.w) * cur.h;
 
-      // якорим под курсором
       const nx = mx - ((mx - cur.x) * nextW) / cur.w;
       const ny = my - ((my - cur.y) * nextH) / cur.h;
       return { x: nx, y: ny, w: nextW, h: nextH };
     });
   };
 
+  const zoomBy = (factor: number) =>
+    setVb((cur) => {
+      const cx = cur.x + cur.w / 2;
+      const cy = cur.y + cur.h / 2;
+      const nextW = clampW(cur.w * factor);
+      const nextH = (nextW / cur.w) * cur.h;
+      return { x: cx - nextW / 2, y: cy - nextH / 2, w: nextW, h: nextH };
+    });
+
   const loading = !world;
 
+  // --- единственный return ---
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Город</h1>
-        {/* Кнопки +- можно вернуть при желании */}
+        <div className="inline-flex rounded-xl overflow-hidden shadow ring-1 ring-slate-200">
+          <button
+            className="px-3 py-2 bg-white hover:bg-slate-50"
+            onClick={() => zoomBy(1 / 1.2)}
+            title="Приблизить"
+          >
+            +
+          </button>
+          <button
+            className="px-3 py-2 bg-white hover:bg-slate-50 border-l border-slate-200"
+            onClick={() => zoomBy(1.2)}
+            title="Отдалить"
+          >
+            −
+          </button>
+        </div>
       </div>
 
       <div
@@ -202,7 +262,6 @@ export default function CityPage() {
             onPointerUp={onPointerUpOrCancel}
             onPointerCancel={onPointerUpOrCancel}
             onWheel={onWheel}
-            // touchAction: "none" — отключает браузерные жесты внутри SVG (в т.ч. pinch)
             style={{
               touchAction: "none",
               cursor: pointersRef.current.size ? "grabbing" : "grab",
