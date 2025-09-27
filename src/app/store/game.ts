@@ -1,12 +1,13 @@
 // src/store/game.ts
 import { create } from "zustand";
 import { axialToPixel } from "../../lib/hex"; // проверь относительный путь
-import type { Building } from "../types";     // проверь путь к типам
+import type { Building } from "../../types";     // проверь путь к типам
 
 type GameState = {
   coins: number;
   buildings: Building[];
   spend: (v: number) => boolean;
+	reset: () => void;
 
   // уже была:
   addBuilding: (b: Omit<Building, "id">) => void;
@@ -49,4 +50,9 @@ export const useGame = create<GameState>((set, get) => ({
       };
       return { buildings: [...s.buildings, nb] };
     }),
+
+	reset: () => set(() => {
+		try { localStorage.removeItem("citygame@state"); } catch {}
+		return { coins: 500, buildings: [] };
+	}),
 }));
