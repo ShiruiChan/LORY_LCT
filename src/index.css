@@ -1,0 +1,4 @@
+@import 'tailwindcss';
+
+:root { --safe-bottom: env(safe-area-inset-bottom); }
+.app-shell { padding-bottom: calc(var(--safe-bottom) + 72px); }
