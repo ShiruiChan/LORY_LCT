@@ -10,12 +10,15 @@ const AcademyPage = lazy(() => import("./app/pages/Academy"));
 const QuestsPage = lazy(() => import("./app/pages/Quests"));
 const ProfilePage = lazy(() => import("./app/pages/Profile"));
 const LoginPage = lazy(() => import("./app/pages/Login"));
+const TelegramAuthPage = lazy(() => import("./app/pages/TelegramAuth"));
+const LessonPage = lazy(() => import("./app/pages/Academy/Lesson"));
 
 export default function App() {
-  const { user } = useAuth();
   const location = useLocation();
   const isLogin = location.pathname === "/login";
-  const showNav = user && !isLogin;
+  // Always display the navigation bar except on the login page
+  const showNav = !isLogin;
+
   return (
     <div className="min-h-screen relative app-shell bg-gradient-to-b from-slate-50 to-white text-slate-900">
       <main className="pb-24 max-w-md mx-auto w-full">
@@ -28,19 +31,17 @@ export default function App() {
           }
         >
           <Routes>
+            {/* If you decide to add login back in the future, keep this route */}
             <Route path="/login" element={<LoginPage />} />
-            {user ? (
-              <>
-                <Route path="/" element={<CityPage />} />
-                <Route path="/wallet" element={<WalletPage />} />
-                <Route path="/academy" element={<AcademyPage />} />
-                <Route path="/quests" element={<QuestsPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </>
-            ) : (
-              <Route path="*" element={<Navigate to="/login" replace />} />
-            )}
+            <Route path="/telegram-login" element={<TelegramAuthPage />} />
+            {/* Main app routes accessible without authentication */}
+            <Route path="/" element={<CityPage />} />
+            <Route path="/wallet" element={<WalletPage />} />
+            <Route path="/academy" element={<AcademyPage />} />
+            <Route path="/academy/:id" element={<LessonPage />} />
+            <Route path="/quests" element={<QuestsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </main>

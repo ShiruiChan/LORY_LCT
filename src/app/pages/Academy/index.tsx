@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { financialProducts } from "../../../data/financialProducts";
 
 /**
@@ -20,6 +21,9 @@ export default function AcademyPage() {
   ];
   // Track which product category is currently expanded.
   const [openCategory, setOpenCategory] = useState<string | null>(null);
+
+  // programmatic navigation for course buttons
+  const navigate = useNavigate();
   return (
     <div className="p-4 space-y-6">
       <h1 className="text-lg font-semibold">Академия</h1>
@@ -35,7 +39,10 @@ export default function AcademyPage() {
               <h3 className="font-medium text-slate-900 mb-1">{l.title}</h3>
               <p className="text-sm text-slate-500 mb-1">{l.time}</p>
               <p className="text-sm text-slate-600 flex-1">{l.description}</p>
-              <button className="mt-3 rounded-lg bg-slate-900 text-white px-3 py-2 text-sm font-medium self-start">
+              <button
+                onClick={() => navigate(`/academy/${l.id}`)}
+                className="mt-3 rounded-lg bg-slate-900 text-white px-3 py-2 text-sm font-medium self-start hover:bg-slate-800 transition-colors"
+              >
                 Пройти урок
               </button>
             </article>
