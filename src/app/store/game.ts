@@ -1,74 +1,52 @@
+// src/store/game.ts
 import { create } from "zustand";
-
-export type Building = {
-  id: string;
-  x: number;
-  y: number;
-  size: number;
-  level: number;
-};
+import { axialToPixel } from "../../lib/hex"; // проверь относительный путь
+import type { Building } from "../types";     // проверь путь к типам
 
 type GameState = {
   coins: number;
   buildings: Building[];
-  addCoins: (v: number) => void;
-  canSpend: (v: number) => boolean;
   spend: (v: number) => boolean;
+
+  // уже была:
   addBuilding: (b: Omit<Building, "id">) => void;
-  reset: () => void;
+
+  // НОВОЕ: строим по гексу
+  addBuildingAt: (opts: {
+    q: number;
+    r: number;
+    type: Building["type"];
+    level?: number;
+    incomePerHour?: number;
+  }) => void;
 };
 
-type Persist = Pick<GameState, "coins" | "buildings">;
+export const useGame = create<GameState>((set, get) => ({
+  coins: 500,
+  buildings: [],
 
-const KEY = "citygame@state";
+  spend: (v) => {
+    if (get().coins < v) return false;
+    set((s) => ({ coins: s.coins - v }));
+    return true;
+  },
 
-const load = (): Persist | undefined => {
-  try { return JSON.parse(localStorage.getItem(KEY) || "null") || undefined; } catch { return undefined; }
-};
-const save = (p: Persist) => {
-  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
-};
+  addBuilding: (b) =>
+    set((s) => ({ buildings: [...s.buildings, { ...b, id: crypto.randomUUID() }] })),
 
-export const useGame = create<GameState>((set, get) => {
-  const initial: Persist = load() ?? { coins: 500, buildings: [] as Building[] };
-
-  return {
-    coins: initial.coins,
-    buildings: initial.buildings,
-
-    addCoins: (v) =>
-      set((s) => {
-        const coins = s.coins + v;
-        save({ coins, buildings: s.buildings });
-        return { coins }; // Partial<GameState>
-      }),
-
-    canSpend: (v) => get().coins >= v,
-
-    spend: (v) => {
-      if (get().coins < v) return false;
-      set((s) => {
-        const coins = s.coins - v;
-        save({ coins, buildings: s.buildings });
-        return { coins };
-      });
-      return true;
-    },
-
-    addBuilding: (b) =>
-      set((s) => {
-        const nb: Building = { ...b, id: crypto.randomUUID() };
-        const buildings: Building[] = [...s.buildings, nb];
-        save({ coins: s.coins, buildings });
-        return { buildings };
-      }),
-
-    reset: () =>
-      set((s) => {
-        const coins = 500;
-        const buildings: Building[] = [];
-        save({ coins, buildings });
-        return { coins, buildings };
-      }),
-  };
-});
+  // НОВОЕ
+  addBuildingAt: ({ q, r, type, level = 1, incomePerHour = 10 }) =>
+    set((s) => {
+      const { x, y } = axialToPixel({ q, r });
+      const nb: Building = {
+        id: crypto.randomUUID(),
+        type,
+        level,
+        incomePerHour,
+        // если в твоём Building есть coord — оставь строку ниже; если нет — можно удалить
+        coord: { q, r },
+        position: { x, y },
+      };
+      return { buildings: [...s.buildings, nb] };
+    }),
+}));

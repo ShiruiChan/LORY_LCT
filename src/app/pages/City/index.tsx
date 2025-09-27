@@ -1,95 +1,88 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { fetchWorld } from "../../services/db";
+import HexTile from "../../components/HexTile";
+import { axialToPixel, HEX_SIZE } from "../../../lib/hex";
 import { useGame } from "../../store/game";
 
-export default function CityPage() {
-  const cRef = useRef<HTMLCanvasElement>(null);
-  const buildings = useGame((s) => s.buildings);
-  const spend = useGame((s) => s.spend);
-  const addBuilding = useGame((s) => s.addBuilding);
+const COST = 100;
 
-  // кнопка построить дом
-  const handleBuild = () => {
-    const COST = 100;
-    if (!spend(COST)) {
-      alert("Недостаточно монет (нужно 100)");
-      return;
-    }
-    const canvas = cRef.current!;
-    const w = canvas.clientWidth;
-    const h = Math.round(w * 1.4);
-    const x = Math.floor(16 + Math.random() * (w - 48));
-    const y = Math.floor(16 + Math.random() * (h - 48));
-    const size = 18 + Math.floor(Math.random() * 10);
-    addBuilding({ x, y, size, level: 1 });
-  };
+export default function CityPage() {
+  const [world, setWorld] = useState<any>(null);
+  const [viewBox, setViewBox] = useState("0 0 800 600");
+  const [buildMode, setBuildMode] = useState(false);
+
+  const spend = useGame((s) => s.spend);
+  const addBuildingAt = useGame((s) => s.addBuildingAt);
+  const buildings = useGame((s) => s.buildings);
 
   useEffect(() => {
-    const c = cRef.current!;
-    const ctx = c.getContext("2d")!;
-    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    (async () => {
+      const w = await fetchWorld(20);
+      setWorld(w);
+      const c = axialToPixel({ q: 0, r: 0 });
+      setViewBox(`${c.x - 400} ${c.y - 300} 800 600`);
+    })();
+  }, []);
 
-    const resize = () => {
-      const w = c.clientWidth;
-      const h = Math.round(w * 1.4);
-      c.width = Math.floor(w * DPR);
-      c.height = Math.floor(h * DPR);
-      c.style.height = `${h}px`;
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    };
-    resize();
-    window.addEventListener("resize", resize);
+  const tiles = useMemo(() => {
+    if (!world) return null;
+    return world.tiles.map((t: any) => (
+      <HexTile
+        key={t.id}
+        tile={t}
+        interactive={buildMode}
+        onClick={() => {
+          if (!buildMode) return;
+          if (t.biome === "water") {
+            alert("Нельзя строить на воде");
+            return;
+          }
+          if (!spend(COST)) {
+            alert(`Недостаточно монет (нужно ${COST})`);
+            setBuildMode(false);
+            return;
+          }
+          addBuildingAt({
+            q: t.coord.q,
+            r: t.coord.r,
+            type: "house",
+            incomePerHour: 12,
+          });
+          setBuildMode(false);
+        }}
+      />
+    ));
+  }, [world, buildMode, spend, addBuildingAt]);
 
-    let raf = 0;
-    const draw = () => {
-      const { width, height } = c;
-      ctx.clearRect(0, 0, width, height);
+  if (!world) return <div className="p-4">Загрузка карты…</div>;
 
-      // фон
-      ctx.fillStyle = "#F8FAFC";
-      ctx.fillRect(0, 0, width, height);
-
-      // сетка
-      ctx.strokeStyle = "#E2E8F0";
-      for (let x = 0; x < width; x += 32) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < height; y += 32) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-
-      // дома из стора
-      ctx.fillStyle = "#0F172A";
-      buildings.forEach((b) => ctx.fillRect(b.x, b.y, b.size, b.size));
-
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
-    };
-  }, [buildings]);
+  const buildingsSvg = buildings.map((b) => (
+    <g key={b.id} transform={`translate(${b.position.x},${b.position.y})`}>
+      <rect x={-6} y={-6} width={12} height={12} fill="#0f172a" />
+    </g>
+  ));
 
   return (
     <div className="p-4 space-y-3">
       <h1 className="text-lg font-semibold">Город</h1>
 
       <div className="rounded-2xl overflow-hidden shadow-sm ring-1 ring-slate-200 bg-white">
-        <canvas ref={cRef} className="w-full block" />
+        <svg viewBox={viewBox} width="100%" height={520}>
+          <g transform={`translate(${HEX_SIZE * 3},${HEX_SIZE * 3})`}>
+            {tiles}
+            {buildingsSvg}
+          </g>
+        </svg>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <button
-          onClick={handleBuild}
-          className="rounded-xl py-3 px-4 bg-slate-900 text-white font-medium active:scale-[.99]"
+          onClick={() => setBuildMode((v) => !v)}
+          className={`rounded-xl py-3 px-4 font-medium active:scale-[.99] ${
+            buildMode ? "bg-sky-600 text-white" : "bg-slate-900 text-white"
+          }`}
         >
-          Построить дом (100)
+          {buildMode ? "Выбери клетку…" : `Построить дом (${COST})`}
         </button>
         <a
           href="/quests"
