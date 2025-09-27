@@ -28,7 +28,7 @@ export default function BottomNav() {
     ];
 
   // Refs to each nav item to measure positions
-  const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const indicatorRef = useRef<HTMLDivElement | null>(null);
   // Ref for the white "wave" behind the indicator
   const waveRef = useRef<HTMLDivElement | null>(null);
@@ -99,7 +99,10 @@ export default function BottomNav() {
             return (
               <div
                 key={to}
-                ref={(el) => (itemRefs.current[index] = el)}
+                // ⬇️ важно: блочное тело, НИЧЕГО не возвращаем
+                ref={(el) => {
+                  itemRefs.current[index] = el;
+                }}
                 className="flex-1 flex justify-center"
               >
                 <Link
