@@ -8,6 +8,7 @@ type GameState = {
   buildings: Building[];
   spend: (v: number) => boolean;
 	reset: () => void;
+	addCoins: (v: number) => void;
 
   // уже была:
   addBuilding: (b: Omit<Building, "id">) => void;
@@ -54,5 +55,11 @@ export const useGame = create<GameState>((set, get) => ({
 	reset: () => set(() => {
 		try { localStorage.removeItem("citygame@state"); } catch {}
 		return { coins: 500, buildings: [] };
+	}),
+
+	addCoins: (v) => set((s) => {
+		const coins = s.coins + v;
+		try { localStorage.setItem("citygame@state", JSON.stringify({ coins, buildings: s.buildings })); } catch {}
+		return { coins };
 	}),
 }));
