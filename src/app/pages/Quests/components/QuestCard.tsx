@@ -1,8 +1,8 @@
 // src/components/QuestCard.tsx
-import React from 'react';
-import { Quest } from '../questStore';
-import { Button } from '../../../../ui/Button';
-import { Coin } from '../../../components/Icons';
+import React from "react";
+import { Quest } from "../../../store/questStore";
+import { Button } from "../../../../ui/Button";
+import { Coin } from "../../../components/Icons";
 
 interface QuestCardProps {
   quest: Quest;
@@ -16,7 +16,7 @@ interface QuestCardProps {
 // Форматирует ISO-дату в DD.MM.YYYY
 const formatDate = (isoString: string): string => {
   const d = new Date(isoString);
-  return d.toLocaleDateString('ru-RU'); // например: 05.04.2025
+  return d.toLocaleDateString("ru-RU"); // например: 05.04.2025
 };
 
 export const QuestCard: React.FC<QuestCardProps> = ({
@@ -32,13 +32,17 @@ export const QuestCard: React.FC<QuestCardProps> = ({
       <div className="bg-white rounded-xl p-4 border border-slate-200 relative">
         <div className="flex justify-between">
           <h4 className="font-medium text-slate-800">{quest.title}</h4>
-          <span className="text-sm text-emerald-700">+{quest.rewardCoins} монет</span>
+          <span className="text-sm text-emerald-700">
+            +{quest.rewardCoins} монет
+          </span>
         </div>
         {quest.description && (
           <p className="text-sm text-slate-600 mt-1">{quest.description}</p>
         )}
         {quest.endsAt && (
-          <p className="text-xs text-slate-500 mt-1">🕗 До {formatDate(quest.endsAt)}</p>
+          <p className="text-xs text-slate-500 mt-1">
+            🕗 До {formatDate(quest.endsAt)}
+          </p>
         )}
         {quest.tags && quest.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
@@ -86,9 +90,11 @@ export const QuestCard: React.FC<QuestCardProps> = ({
         <p className="text-sm text-slate-600 mt-2">{quest.description}</p>
       )}
       {quest.endsAt && (
-        <p className="text-xs text-slate-500 mt-1">🕗 До {formatDate(quest.endsAt)}</p>
+        <p className="text-xs text-slate-500 mt-1">
+          🕗 До {formatDate(quest.endsAt)}
+        </p>
       )}
-      {(quest.status === 'active' || quest.status === 'completed') && (
+      {(quest.status === "active" || quest.status === "completed") && (
         <>
           <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
             <div
@@ -102,17 +108,17 @@ export const QuestCard: React.FC<QuestCardProps> = ({
         </>
       )}
       <div className="mt-3 flex gap-2">
-        {quest.status === 'available' && onStart && (
+        {quest.status === "available" && onStart && (
           <Button size="sm" onClick={onStart}>
             Начать
           </Button>
         )}
-        {quest.status === 'completed' && onClaim && (
+        {quest.status === "completed" && onClaim && (
           <Button size="sm" variant="primary" onClick={onClaim}>
             Получить награду
           </Button>
         )}
-        {quest.status === 'rewarded' && (
+        {quest.status === "rewarded" && (
           <span className="text-xs text-emerald-700 font-medium">
             Награда получена ✓
           </span>

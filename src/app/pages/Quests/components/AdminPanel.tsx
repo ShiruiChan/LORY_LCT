@@ -1,7 +1,7 @@
 // src/components/AdminPanel.tsx
-import React, { useState } from 'react';
-import { useQuests, Quest, QuestPeriod } from '../questStore';
-import { QuestCard } from './QuestCard';
+import React, { useState } from "react";
+import { useQuests, Quest, QuestPeriod } from "../../../store/questStore";
+import { QuestCard } from "./QuestCard";
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -9,7 +9,11 @@ interface AdminPanelProps {
   onAdd: () => void;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onEdit, onAdd }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({
+  onClose,
+  onEdit,
+  onAdd,
+}) => {
   const { quests, deleteQuest } = useQuests();
   const [isClosing, setIsClosing] = useState(false);
 
@@ -18,23 +22,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onEdit, onAdd }
     setTimeout(() => onClose(), 500);
   };
 
-  const periodOrder: QuestPeriod[] = ['daily', 'weekly', 'monthly'];
+  const periodOrder: QuestPeriod[] = ["daily", "weekly", "monthly"];
   const periodLabels = {
-    daily: 'Ежедневные',
-    weekly: 'Еженедельные',
-    monthly: 'Ежемесячные',
+    daily: "Ежедневные",
+    weekly: "Еженедельные",
+    monthly: "Ежемесячные",
   };
 
-  const grouped = periodOrder.reduce(
-    (acc, period) => {
-      acc[period] = quests.filter((q) => q.period === period);
-      return acc;
-    },
-    {} as Record<QuestPeriod, Quest[]>
-  );
+  const grouped = periodOrder.reduce((acc, period) => {
+    acc[period] = quests.filter((q) => q.period === period);
+    return acc;
+  }, {} as Record<QuestPeriod, Quest[]>);
 
   return (
-    <div className={`fixed inset-0 z-20 bg-white shadow-lg ${isClosing ? 'admin-page-closing' : 'admin-page'}`}>
+    <div
+      className={`fixed inset-0 z-20 bg-white shadow-lg ${
+        isClosing ? "admin-page-closing" : "admin-page"
+      }`}
+    >
       <div className="p-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold">🛠️ Админ-панель</h2>
@@ -45,7 +50,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onEdit, onAdd }
             >
               + Добавить
             </button>
-            <button onClick={handleClose} className="text-xl">×</button>
+            <button onClick={handleClose} className="text-xl">
+              ×
+            </button>
           </div>
         </div>
 
@@ -55,7 +62,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onEdit, onAdd }
             if (questsInPeriod.length === 0) return null;
             return (
               <div key={period} className="mb-4">
-                <h4 className="text-sm font-semibold text-slate-600 mb-2">{periodLabels[period]}</h4>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">
+                  {periodLabels[period]}
+                </h4>
                 <div className="space-y-2">
                   {questsInPeriod.map((q) => (
                     <QuestCard

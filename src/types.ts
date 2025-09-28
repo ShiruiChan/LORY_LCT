@@ -19,6 +19,7 @@ export type ShopItem = {
 
 export type Axial = { q: number; r: number };
 
+/** Interface describing a single building on the map.  */
 export interface Building {
   id: string;
   /**
@@ -31,8 +32,18 @@ export interface Building {
   type: "house" | "shop" | "factory" | "park" | "bank" | "farm";
   /** Level determines the income multiplier of the building. */
   level: number;
-  /** Income per hour for a level‑1 building. Higher levels increase income. */
+  /**
+   * Income per hour for a level‑1 building. Higher levels increase income.
+   * Use this in combination with level to compute yield.
+   */
   incomePerHour: number;
+  /**
+   * Timestamp (ms since epoch) when income for this building was last
+   * collected. When calculating new income, subtract this value from
+   * the current time. After collecting income, update this timestamp
+   * to now to avoid counting the same period twice.
+   */
+  lastIncomeAt: number;
   /** Axial coordinates of the hex the building occupies. */
   coord: Axial;
   /** Pixel position of the building centre on the map. */

@@ -1,11 +1,10 @@
-// src/components/QuestForm.tsx
-import React, { useState } from 'react';
-import { Quest, QuestPeriod } from '../questStore';
+import React, { useState } from "react";
+import { Quest, QuestPeriod, QuestInput } from "../../../store/questStore";
 
 interface QuestFormProps {
-  mode: 'create' | 'edit';
+  mode: "create" | "edit";
   initialData?: Quest;
-  onSave: (data: Omit<Quest, 'id'>) => void;
+  onSave: (data: QuestInput) => void;
   onCancel?: () => void;
 }
 
@@ -15,45 +14,52 @@ export const QuestForm: React.FC<QuestFormProps> = ({
   onSave,
   onCancel,
 }) => {
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [description, setDescription] = useState(initialData?.description || '');
-  const [rewardCoins, setRewardCoins] = useState(initialData?.rewardCoins || 100);
-  const [period, setPeriod] = useState<QuestPeriod>(initialData?.period || 'daily');
+  const [title, setTitle] = useState(initialData?.title || "");
+  const [description, setDescription] = useState(
+    initialData?.description || ""
+  );
+  const [rewardCoins, setRewardCoins] = useState(
+    initialData?.rewardCoins || 100
+  );
+  const [period, setPeriod] = useState<QuestPeriod>(
+    initialData?.period || "daily"
+  );
   const [tags, setTags] = useState<string[]>(initialData?.tags || []);
-  const [endsAt, setEndsAt] = useState(initialData?.endsAt || '');
+  const [endsAt, setEndsAt] = useState(initialData?.endsAt || "");
 
   const handleTagInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+    if (e.key === "Enter" && e.currentTarget.value.trim()) {
       const newTag = e.currentTarget.value.trim();
       if (!tags.includes(newTag)) {
         setTags([...tags, newTag]);
       }
-      e.currentTarget.value = '';
+      e.currentTarget.value = "";
     }
   };
 
   const removeTag = (tagToRemove: string) =>
-    setTags(tags.filter(tag => tag !== tagToRemove));
+    setTags(tags.filter((tag) => tag !== tagToRemove));
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    onSave({
+    // Prepare quest input for saving.  Goal defaults to existing goal or 1.
+    const input: QuestInput = {
       title: title.trim(),
       description: description || undefined,
       rewardCoins,
       period,
       tags,
       endsAt: endsAt || undefined,
-      status: mode === 'create' ? 'available' : (initialData?.status || 'available'),
-      progress: mode === 'create' ? 0 : (initialData?.progress || 0),
-    });
-    if (mode === 'edit' && onCancel) onCancel();
+      goal: initialData?.goal ?? 1,
+    };
+    onSave(input);
+    if (mode === "edit" && onCancel) onCancel();
   };
 
   return (
     <div className="bg-slate-50 rounded-xl p-4">
       <h3 className="font-medium mb-3">
-        {mode === 'create' ? 'Добавить квест' : 'Редактировать квест'}
+        {mode === "create" ? "Добавить квест" : "Редактировать квест"}
       </h3>
       <div className="space-y-3">
         <input
@@ -71,8 +77,10 @@ export const QuestForm: React.FC<QuestFormProps> = ({
         />
         <input
           type="datetime-local"
-          value={endsAt ? new Date(endsAt).toISOString().slice(0, 16) : ''}
-          onChange={(e) => setEndsAt(e.target.value ? e.target.value + ':00Z' : '')}
+          value={endsAt ? new Date(endsAt).toISOString().slice(0, 16) : ""}
+          onChange={(e) =>
+            setEndsAt(e.target.value ? e.target.value + ":00Z" : "")
+          }
           className="w-full p-2 border rounded"
         />
         <div className="grid grid-cols-2 gap-2">
@@ -125,7 +133,7 @@ export const QuestForm: React.FC<QuestFormProps> = ({
             onClick={handleSubmit}
             className="flex-1 bg-emerald-600 text-white py-2 rounded font-medium"
           >
-            {mode === 'create' ? 'Добавить' : 'Сохранить'}
+            {mode === "create" ? "Добавить" : "Сохранить"}
           </button>
           {onCancel && (
             <button

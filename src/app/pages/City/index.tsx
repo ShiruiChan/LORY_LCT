@@ -7,6 +7,7 @@ import React, {
 } from "react";
 
 import { useGame } from "../../store/game";
+import { useQuests } from "../../store/questStore";
 import HexTile from "../../components/HexTile";
 import BuildMenu, { BuildOption } from "../../components/BuildMenu";
 import type { Tile } from "../../../types";
@@ -33,7 +34,18 @@ const BUILD_OPTIONS: BuildOption[] = [
 ];
 
 export default function CityPage() {
-  const { coins, canSpend, spend, addBuildingAt, buildings } = useGame();
+  const {
+    coins,
+    canSpend,
+    spend,
+    addBuildingAt,
+    buildings,
+    collectIncome,
+    mergeBuildingsAt,
+  } = useGame();
+
+  // Quest store actions
+  const { incrementProgressForTag } = useQuests();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const pointersRef = useRef<Set<number>>(new Set());
@@ -206,6 +218,7 @@ export default function CityPage() {
   const handleSelectOption = useCallback(
     (opt: BuildOption) => {
       if (!clickedTile) return;
+      // Сначала проверяем наличие монет, а доход собираем после строительства.
       if (!canSpend(opt.cost)) {
         alert(`Недостаточно монет (нужно ${opt.cost})`);
         return;
@@ -213,11 +226,30 @@ export default function CityPage() {
       if (spend(opt.cost)) {
         const { q, r } = clickedTile.coord;
         addBuildingAt({ q, r, type: opt.type as any });
+        // Собираем доход после строительства, чтобы начислить накопленный доход
+        // и не мешать выбору здания в меню.
+        collectIncome();
+        // Обновляем прогресс квестов на строительство
+        incrementProgressForTag("build", 1);
       }
       setMenuPos(null);
       setClickedTile(null);
     },
-    [clickedTile, canSpend, spend, addBuildingAt]
+    [clickedTile, canSpend, spend, addBuildingAt, collectIncome]
+  );
+
+  // обработчик клика по существующему зданию (попытка объединить)
+  const handleBuildingClick = useCallback(
+    (b: any, e: React.MouseEvent<SVGRectElement, MouseEvent>) => {
+      e.stopPropagation();
+      // Attempt to merge building with neighbour. If merge occurs, collect income afterwards
+      const merged = mergeBuildingsAt(b.coord.q, b.coord.r);
+      if (merged) {
+        // Show some feedback. You could use a toast/notification instead of alert.
+        alert(`Здания объединены! Уровень здания теперь ${b.level + 1}`);
+      }
+    },
+    [mergeBuildingsAt]
   );
 
   return (
@@ -247,6 +279,20 @@ export default function CityPage() {
             Fit
           </button>
         </div>
+        {/* Кнопка сбора дохода */}
+        <button
+          className="ml-3 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+          onClick={() => {
+            const earned = collectIncome();
+            if (earned > 0) {
+              alert(`Вы собрали ${earned} монет!`);
+            } else {
+              alert("Нет накопленного дохода");
+            }
+          }}
+        >
+          Собрать доход
+        </button>
       </div>
 
       <div className="rounded-2xl overflow-hidden ring-1 ring-slate-200 bg-white">
@@ -288,7 +334,8 @@ export default function CityPage() {
                       width={size}
                       height={size}
                       fill="#0f172a"
-                      pointerEvents="none"
+                      // make buildings clickable to allow merging
+                      onClick={(e) => handleBuildingClick(b, e as any)}
                     />
                   </g>
                 );
