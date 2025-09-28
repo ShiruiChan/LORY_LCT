@@ -1,5 +1,11 @@
 import React from "react";
 
+/**
+ * A simple wrapper around a button that vertically stacks an icon and a label.
+ * This component is used in the bottom navigation bar. The styling matches
+ * the upstream project but can be customised via tailwind classes on the
+ * parent NavLink.
+ */
 type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   label?: string;
 };

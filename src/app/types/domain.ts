@@ -23,14 +23,6 @@ export interface Investment {
   updatedAt: number;     // ts
 }
 
-export interface Building {
-  id: string;
-  type: 'house' | 'shop' | 'factory' | 'park';
-  level: number;
-  incomePerHour: number;
-  position: { x: number; y: number }; // абстрактная карта
-}
-
 export interface Quest {
   id: string;
   title: string;

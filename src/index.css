@@ -1,4 +1,23 @@
 @import 'tailwindcss';
 
-:root { --safe-bottom: env(safe-area-inset-bottom); }
-.app-shell { padding-bottom: calc(var(--safe-bottom) + 72px); }
+:root {
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+/* The app shell reserves space for the bottom nav. Adjust this when
+   adding or removing tabs. */
+.app-shell {
+  padding-bottom: calc(var(--safe-bottom) + 72px);
+}
+
+/* Disable native gestures on the map to prevent scrolling the page
+   while panning/zooming. */
+.map-root {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+svg {
+  display: block;
+}
