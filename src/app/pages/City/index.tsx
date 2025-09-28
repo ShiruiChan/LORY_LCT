@@ -13,6 +13,10 @@ import BuildMenu, { BuildOption } from "../../components/BuildMenu";
 import type { Tile } from "../../../types";
 import { axialToPixel } from "../../../lib/hex";
 import { genHexagonGrid, assignBiomes } from "../../utils/grid";
+import { recomputeClusters } from "../../services/map/clustering";
+import ClusterOverlay from "../../components/overlays/ClusterOverlay";
+import { useEconomyTicker } from "../../hooks/useEconomyTicker";
+import { EconomyHUD } from "../../components/HUD/EconomyHUD";
 
 // ===== настройки карты =====
 const ZOOM_MIN = 0.4;
@@ -43,6 +47,7 @@ export default function CityPage() {
     collectIncome,
     mergeBuildingsAt,
   } = useGame();
+  const { coinsPerSec } = useEconomyTicker(buildings);
 
   // Quest store actions
   const { incrementProgressForTag } = useQuests();
@@ -55,6 +60,7 @@ export default function CityPage() {
 
   // мир: шестиугольник радиуса R + биомы
   const tiles: Tile[] = useMemo(() => assignBiomes(genHexagonGrid(10), 42), []);
+  const { clusters } = useMemo(() => recomputeClusters(buildings), [buildings]);
 
   // ===== состояние меню строительства =====
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -256,6 +262,7 @@ export default function CityPage() {
     <div className="p-4 space-y-3 relative">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Город</h1>
+        <EconomyHUD coins={coins} coinsPerSec={coinsPerSec} />
         <div className="inline-flex rounded-xl overflow-hidden shadow ring-1 ring-slate-200">
           <button
             className="px-3 py-2 bg-white hover:bg-slate-50"
@@ -340,6 +347,7 @@ export default function CityPage() {
                   </g>
                 );
               })}
+              <ClusterOverlay clusters={clusters} />
             </g>
           </svg>
 
