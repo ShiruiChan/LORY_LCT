@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { EconomyTicker } from "../services/economy/ticker";
 import type { Building } from "../../types";
-import { useGame } from "../store/game"; // zustand store
+import { useGame } from "../store/game";
 
-/** Hook: wires EconomyTicker to the game store and returns a smoothed coins/sec */
 export function useEconomyTicker(buildings: Building[]) {
   const addCoins = useGame((s: any) => s.addCoins);
+  const population = useGame((s: any) => s.population);
+  const jobs = useGame((s: any) => s.jobs);
+  const clamp = (v: number, a: number, b: number) =>
+    Math.max(a, Math.min(b, v));
   const tickerRef = useRef<EconomyTicker | null>(null);
   const [coinsPerSec, setCps] = useState(0);
 
@@ -32,11 +35,12 @@ export function useEconomyTicker(buildings: Building[]) {
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      tickerRef.current!.tick(buildings, { employmentRatio: 1 });
+      const emp = clamp(population / Math.max(1, jobs), 0, 1.2);
+      tickerRef.current!.tick(buildings, { employmentRatio: emp });
     };
     loop();
     return () => cancelAnimationFrame(raf);
-  }, [buildings, addCoins]);
+  }, [buildings, addCoins, population, jobs]);
 
   return { coinsPerSec };
 }

@@ -1,22 +1,29 @@
-// Persistent game state. This store manages the player's coin balance,
-// list of buildings on the map and provides helper functions to add
-// buildings, upgrade them, merge adjacent buildings and collect income.
-// The state is saved to localStorage so progress persists between sessions.
-
 import { create } from "zustand";
 import { axialToPixel } from "../../lib/hex";
 import type { Building } from "../../types";
+import { upgradeCost } from "../services/economy/formulas";
+import { recomputeClusters } from "../services/map/clustering";
+
+const POP_BY_TYPE: Partial<Record<Building["type"], number>> = {
+  house: 5,
+};
+const JOBS_BY_TYPE: Partial<Record<Building["type"], number>> = {
+  factory: 6,
+  shop: 3,
+  bank: 4,
+};
 
 export type GameState = {
   /** Current amount of coins the player owns. */
   coins: number;
   /** List of all buildings placed on the map. */
   buildings: Building[];
-  // ==== economy ====
+  // === занятость ===
+  population: number; // всего населения
+  jobs: number; // доступных рабочих мест
   /** Add a certain amount of coins. */
-  addCoins: (v: number) => void;
-  /** Whether the player can spend a given amount of coins. */
-  canSpend: (v: number) => boolean;
+  canSpend: (amount: number) => boolean;
+  addCoins: (delta: number) => void;
   /** Spend coins if available and return true if successful. */
   spend: (v: number) => boolean;
   /** Reset the game state, clearing all buildings and restoring the default coin balance. */
@@ -26,11 +33,6 @@ export type GameState = {
   // ==== buildings ====
   /** Add a building with specified properties (id will be generated automatically). */
   addBuilding: (b: Omit<Building, "id">) => void;
-  /**
-   * Add a building at a given axial coordinate. Optionally specify
-   * level and base income per hour. The building will have its
-   * lastIncomeAt timestamp set to now.
-   */
   addBuildingAt: (opts: {
     q: number;
     r: number;
@@ -42,7 +44,10 @@ export type GameState = {
   removeBuilding: (id: string) => void;
   /** Upgrade a building to the next level. */
   upgradeBuilding: (id: string) => void;
-  /** Attempt to merge a building at the given coordinate with one of its adjacent buildings. */
+  upgradeClusterByTiles: (
+    tiles: { q: number; r: number }[],
+    threshold?: number
+  ) => void;
   mergeBuildingsAt: (q: number, r: number) => boolean;
 };
 
@@ -58,9 +63,21 @@ const getNeighbours = ({ q, r }: { q: number; r: number }) => [
   { q: q - 1, r: r + 1 },
 ];
 
+function computeEmployment(buildings: Building[]) {
+  let population = 0;
+  let jobs = 0;
+  for (const b of buildings) {
+    population += POP_BY_TYPE[b.type] ?? 0;
+    jobs += JOBS_BY_TYPE[b.type] ?? 0;
+  }
+  return { population, jobs };
+}
+
 export const useGame = create<GameState>((set, get) => ({
   coins: 500,
   buildings: [],
+  population: 0,
+  jobs: 0,
   // ==== economy ====
   addCoins: (v) =>
     set((s) => {
@@ -94,14 +111,6 @@ export const useGame = create<GameState>((set, get) => ({
       } catch {}
       return { coins: 500, buildings: [] };
     }),
-  /**
-   * Iterate over all buildings and collect the income accumulated since
-   * their last collection timestamp. Income is calculated as:
-   * income = (elapsed time in hours) * incomePerHour * level.
-   * The total collected income is added to the player's coins and
-   * returned for UI feedback. After collecting, each building's
-   * lastIncomeAt timestamp is set to now.
-   */
   collectIncome: () => {
     let total = 0;
     const now = Date.now();
@@ -129,71 +138,122 @@ export const useGame = create<GameState>((set, get) => ({
     set((s) => ({
       buildings: [...s.buildings, { ...b, id: crypto.randomUUID() }],
     })),
-  addBuildingAt: ({ q, r, type, level = 1, incomePerHour = 10 }) =>
+  addBuildingAt: ({ q, r, type }) => {
     set((s) => {
-      const { x, y } = axialToPixel({ q, r });
-      const nb: Building = {
-        id: crypto.randomUUID(),
+      const id = crypto.randomUUID();
+      const position = axialToPixel({ q, r });
+      const b: Building = {
+        id,
         type,
-        level,
-        incomePerHour,
-        lastIncomeAt: Date.now(),
         coord: { q, r },
-        position: { x, y },
+        position,
+        level: 1,
+        incomePerHour: 0,
+        lastIncomeAt: Date.now(),
       };
-      return { buildings: [...s.buildings, nb] };
-    }),
+      const buildings = [...s.buildings, b];
+      const { population, jobs } = computeEmployment(buildings);
+      return { buildings, population, jobs };
+    });
+  },
   removeBuilding: (id) =>
-    set((s) => ({
-      buildings: s.buildings.filter((b) => b.id !== id),
-    })),
+    set((s) => {
+      const buildings = s.buildings.filter((b) => b.id !== id);
+      const { population, jobs } = computeEmployment(buildings);
+      return { buildings, population, jobs };
+    }),
   upgradeBuilding: (id) =>
-    set((s) => ({
-      buildings: s.buildings.map((b) =>
-        b.id === id
-          ? { ...b, level: (b.level ?? 1) + 1, lastIncomeAt: Date.now() }
+    set((s) => {
+      const idx = s.buildings.findIndex((b) => b.id === id);
+      if (idx === -1) return {};
+      const b = s.buildings[idx];
+      const cost = upgradeCost(b.level);
+      if (!s.canSpend(cost)) return {};
+      const buildings = s.buildings.map((x, i) =>
+        i === idx ? { ...x, level: x.level + 1, lastIncomeAt: Date.now() } : x
+      );
+      // списываем монеты
+      const coins = s.coins - cost;
+      // занятость уровнем не меняем (по ТЗ модель простая)
+      return { buildings, coins };
+    }),
+  upgradeClusterByTiles: (tiles, threshold = 0.8) =>
+    set((s) => {
+      if (!tiles?.length) return {};
+
+      const tileKeys = new Set(tiles.map((t) => `${t.q}:${t.r}`));
+      const inside = s.buildings.filter((b) =>
+        tileKeys.has(`${b.coord.q}:${b.coord.r}`)
+      );
+      if (inside.length === 0) return {};
+
+      // ≥ X% зданий одного уровня?
+      const byLevel = new Map<number, number>();
+      for (const b of inside)
+        byLevel.set(b.level, (byLevel.get(b.level) ?? 0) + 1);
+      let best = 0;
+      for (const [, cnt] of byLevel) if (cnt > best) best = cnt;
+      const ratioSame = best / inside.length;
+      if (ratioSame < threshold) return {};
+
+      // деньги
+      const costTotal = inside.reduce(
+        (acc, b) => acc + upgradeCost(b.level),
+        0
+      );
+      if (!s.canSpend(costTotal)) return {};
+
+      const now = Date.now();
+      const toUpgrade = new Set(inside.map((b) => b.id));
+      const buildings = s.buildings.map((b) =>
+        toUpgrade.has(b.id)
+          ? { ...b, level: b.level + 1, lastIncomeAt: now }
           : b
-      ),
-    })),
-  /**
-   * Attempt to merge a building at (q,r) with an adjacent building of the
-   * same type and level. If such a neighbour exists, the neighbour is
-   * removed and the building at (q,r) is upgraded. Before merging, income
-   * from both buildings is collected to avoid losing generated coins.
-   * Returns true if a merge occurred, otherwise false.
-   */
+      );
+      return { buildings, coins: s.coins - costTotal };
+    }),
   mergeBuildingsAt: (q, r) => {
     const { buildings } = get();
-    // find target building
+
+    // 1) находим целевое здание
     const idx = buildings.findIndex((b) => b.coord.q === q && b.coord.r === r);
     if (idx === -1) return false;
     const target = buildings[idx];
-    // find mergeable neighbour
+    const targetId = target.id;
+
+    // 2) ищем соседа подходящего типа и уровня
     const neighbours = getNeighbours(target.coord);
-    const neighbourIdx = buildings.findIndex((b, i) => {
-      if (i === idx) return false;
-      if (b.type !== target.type || b.level !== target.level) return false;
-      return neighbours.some((n) => n.q === b.coord.q && n.r === b.coord.r);
-    });
-    if (neighbourIdx === -1) return false;
-    // Collect income from both buildings before merging
-    get().collectIncome();
-    // Remove neighbour and upgrade target
+    const neighbour = buildings.find(
+      (b, i) =>
+        i !== idx &&
+        b.type === target.type &&
+        b.level === target.level &&
+        neighbours.some((n) => n.q === b.coord.q && n.r === b.coord.r)
+    );
+    if (!neighbour) return false;
+    const neighbourId = neighbour.id;
+
+    // 3) собираем начисления до слияния
+    get().collectIncome?.();
+
+    // 4) применяем изменения атомарно
     set((s) => {
-      const updated = s.buildings.filter((_, i) => i !== neighbourIdx);
-      return {
-        buildings: updated.map((b, i) => {
-          if (i === idx) {
-            return {
-              ...b,
-              level: b.level + 1,
-              lastIncomeAt: Date.now(),
-            };
-          }
-          return b;
-        }),
-      };
+      const now = Date.now();
+
+      // убрать соседа
+      const withoutNeighbour = s.buildings.filter((b) => b.id !== neighbourId);
+
+      // апгрейдить целевое по id (устойчиво к сдвигам индексов)
+      const buildingsNext = withoutNeighbour.map((b) =>
+        b.id === targetId ? { ...b, level: b.level + 1, lastIncomeAt: now } : b
+      );
+
+      // пересчёт занятости
+      const { population, jobs } = computeEmployment(buildingsNext);
+
+      return { buildings: buildingsNext, population, jobs };
     });
+
     return true;
   },
 }));

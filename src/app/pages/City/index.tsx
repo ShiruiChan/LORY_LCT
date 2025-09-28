@@ -48,6 +48,7 @@ export default function CityPage() {
     mergeBuildingsAt,
   } = useGame();
   const { coinsPerSec } = useEconomyTicker(buildings);
+  const upgradeClusterByTiles = useGame((s) => s.upgradeClusterByTiles);
 
   // Quest store actions
   const { incrementProgressForTag } = useQuests();
@@ -347,7 +348,16 @@ export default function CityPage() {
                   </g>
                 );
               })}
-              <ClusterOverlay clusters={clusters} />
+              <ClusterOverlay
+                clusters={clusters}
+                buildings={buildings}
+                coins={coins}
+                threshold={0.8}
+                onUpgrade={(tiles) => {
+                  console.log("[City] upgrade tiles ->", tiles.length);
+                  upgradeClusterByTiles(tiles, 0.8);
+                }}
+              />
             </g>
           </svg>
 

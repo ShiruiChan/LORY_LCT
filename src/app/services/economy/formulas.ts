@@ -1,6 +1,6 @@
 // Economy formulas for building income and cluster bonuses
 
-export type BuildingLike = {
+export type Building = {
   id: string;
   type: string; // house | shop | factory | park | bank | farm | school | ...
   level: number; // 1..N
@@ -50,7 +50,7 @@ export function employmentMult(employmentRatio: number): number {
 
 /** coins per second */
 export function incomePerSecond(
-  b: BuildingLike,
+  b: Building,
   opts: { clusterTileCount?: number; employmentRatio?: number } = {}
 ): number {
   const base = BASE_INCOME[b.type] ?? 2;
@@ -64,8 +64,12 @@ export function incomePerSecond(
 
 /** coins per hour (для воркера) */
 export function incomePerHour(
-  b: BuildingLike,
+  b: Building,
   opts: { clusterTileCount?: number; employmentRatio?: number } = {}
 ): number {
   return incomePerSecond(b, opts) * 3600;
 }
+
+// стоимость апгрейда уровня L (по умолчанию base=50, рост 1.6)
+export const upgradeCost = (level: number, base = 50, growth = 1.6) =>
+  Math.round(base * Math.pow(growth, level - 1));

@@ -1,6 +1,6 @@
 // Economy ticker that leverages the existing Web Worker
 import WorkerUrl from "../../workers/economy.worker.ts?worker&url";
-import { incomePerHour, type BuildingLike } from "./formulas";
+import { incomePerHour, type Building } from "./formulas";
 import { recomputeClusters } from "../map/clustering";
 
 type Subscriber = (delta: number) => void;
@@ -24,7 +24,7 @@ export class EconomyTicker {
   }
 
   // <<< ВАЖНО: принимаем BuildingLike[], но по сути структурно совместимо с твоим Building[] >>>
-  tick(buildings: BuildingLike[], opts?: { employmentRatio?: number }) {
+  tick(buildings: Building[], opts?: { employmentRatio?: number }) {
     const now = performance.now();
     const dtMs = now - this.lastTs;
     this.lastTs = now;
