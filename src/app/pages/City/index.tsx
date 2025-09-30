@@ -11,7 +11,7 @@ import { useQuests } from "../../store/questStore";
 import HexTile from "../../components/HexTile";
 import BuildMenu, { BuildOption } from "../../components/BuildMenu";
 import type { Tile } from "../../../types";
-import { axialToPixel } from "../../../lib/hex";
+import { axialToPixel, hexPolygonPoints } from "../../../lib/hex";
 import { genHexagonGrid, assignBiomes } from "../../utils/grid";
 import { recomputeClusters } from "../../services/map/clustering";
 import ClusterOverlay from "../../components/overlays/ClusterOverlay";
@@ -59,6 +59,27 @@ export default function CityPage() {
   const [vb, setVb] = useState<ViewBox>({ x: 0, y: 0, w: 1000, h: 700 });
   const baseRef = useRef<{ w: number; h: number }>({ w: 1000, h: 700 });
 
+  const hexBBox = useMemo(() => {
+    // берём полигон гекса в (q=0,r=0) и вычисляем его bbox
+    const pts = hexPolygonPoints(0, 0)
+      .split(" ")
+      .map((p) => p.split(",").map(Number) as [number, number]);
+
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+
+    for (const [x, y] of pts) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+
+    return { w: maxX - minX, h: maxY - minY }; // ширина/высота одного гекса в мировых единицах
+  }, []);
+
   // мир: шестиугольник радиуса R + биомы
   const tiles: Tile[] = useMemo(() => assignBiomes(genHexagonGrid(10), 42), []);
   const { clusters } = useMemo(() => recomputeClusters(buildings), [buildings]);
@@ -68,16 +89,21 @@ export default function CityPage() {
   const [clickedTile, setClickedTile] = useState<Tile | null>(null);
 
   // ===== utils =====
-  const clampView = useCallback((w: number, h: number) => {
-    const wMin = baseRef.current.w / ZOOM_MAX;
-    const wMax = baseRef.current.w / ZOOM_MIN;
-    const hMin = baseRef.current.h / ZOOM_MAX;
-    const hMax = baseRef.current.h / ZOOM_MIN;
-    return {
-      w: Math.max(wMin, Math.min(wMax, w)),
-      h: Math.max(hMin, Math.min(hMax, h)),
-    };
-  }, []);
+  const clampView = useCallback(
+    (w: number, h: number) => {
+      // Минимальные размеры viewBox: чтобы гекс занимал не больше половины экрана
+      const wMin = 2 * hexBBox.w;
+      const hMin = 2 * hexBBox.h;
+      // Максимальные размеры (зум-аут) оставляем как раньше через ZOOM_MIN
+      const wMax = baseRef.current.w / ZOOM_MIN;
+      const hMax = baseRef.current.h / ZOOM_MIN;
+      return {
+        w: Math.max(wMin, Math.min(wMax, w)),
+        h: Math.max(hMin, Math.min(hMax, h)),
+      };
+    },
+    [hexBBox.w, hexBBox.h]
+  );
 
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || tiles.length === 0) return;
@@ -128,6 +154,63 @@ export default function CityPage() {
     [vb]
   );
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    try {
+      const done = localStorage.getItem("firstBuildOnboardingDone") === "1";
+      if (!done) setShowOnboarding(true);
+    } catch {
+      setShowOnboarding(true);
+    }
+  }, []);
+
+  function closeOnboarding(markDone = false) {
+    if (markDone) {
+      try {
+        localStorage.setItem("firstBuildOnboardingDone", "1");
+      } catch {}
+    }
+    setShowOnboarding(false);
+  }
+
+  const setInitialHalfHexView = useCallback(() => {
+    if (!svgRef.current) return;
+
+    // размеры viewBox, при которых один гекс занимает ~половину экрана
+    const w = 4 * hexBBox.w;
+    const h = 4 * hexBBox.h;
+
+    // выбираем центр: пытаемся найти (0,0); иначе — центр всех тайлов
+    const centerTile =
+      tiles.find((t) => t.coord.q === 0 && t.coord.r === 0) ?? null;
+
+    let cx: number, cy: number;
+
+    if (centerTile) {
+      const p = axialToPixel(centerTile.coord);
+      cx = p.x;
+      cy = p.y;
+    } else {
+      // центр по всем тайлам (fallback)
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity;
+      for (const t of tiles) {
+        const { x, y } = axialToPixel(t.coord);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      cx = (minX + maxX) / 2;
+      cy = (minY + maxY) / 2;
+    }
+
+    setVb({ x: cx - w / 2, y: cy - h / 2, w, h });
+  }, [tiles, hexBBox.w, hexBBox.h]);
+
   // ===== НАТИВНЫЙ wheel с passive:false — окончательно убирает прокрутку страницы =====
   const handleWheelNative = useCallback(
     (e: WheelEvent) => {
@@ -159,6 +242,13 @@ export default function CityPage() {
     el.addEventListener("wheel", handleWheelNative, { passive: false });
     return () => el.removeEventListener("wheel", handleWheelNative as any);
   }, [handleWheelNative]);
+
+  useEffect(() => {
+    setInitialHalfHexView();
+    const ro = new ResizeObserver(() => setInitialHalfHexView());
+    if (svgRef.current?.parentElement) ro.observe(svgRef.current.parentElement);
+    return () => ro.disconnect();
+  }, [setInitialHalfHexView]);
 
   // панорамирование Pointer Events
   const dragRef = useRef<{ x: number; y: number; vb: ViewBox } | null>(null);
@@ -260,11 +350,10 @@ export default function CityPage() {
   );
 
   return (
-    <div className="p-4 space-y-3 relative">
+    <div className="relative">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Город</h1>
         <EconomyHUD coins={coins} coinsPerSec={coinsPerSec} />
-        <div className="inline-flex rounded-xl overflow-hidden shadow ring-1 ring-slate-200">
+        <div className="inline-flex fixed top-5 left-5 z-10 rounded-xl overflow-hidden shadow ring-1 ring-slate-200 ml-auto">
           <button
             className="px-3 py-2 bg-white hover:bg-slate-50"
             onClick={() => zoomBy(1 / ZOOM_STEP)}
@@ -287,24 +376,52 @@ export default function CityPage() {
             Fit
           </button>
         </div>
-        {/* Кнопка сбора дохода */}
-        <button
-          className="ml-3 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
-          onClick={() => {
-            const earned = collectIncome();
-            if (earned > 0) {
-              alert(`Вы собрали ${earned} монет!`);
-            } else {
-              alert("Нет накопленного дохода");
-            }
-          }}
-        >
-          Собрать доход
-        </button>
       </div>
 
-      <div className="rounded-2xl overflow-hidden ring-1 ring-slate-200 bg-white">
-        <div className="h-[70vh] relative">
+      {showOnboarding && (
+        <div
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-40
+                  bg-white/90 backdrop-blur ring-1 ring-slate-200
+                  px-3 py-2 rounded-xl text-sm shadow"
+        >
+          Тапните по любой клетке, чтобы построить здание
+        </div>
+      )}
+
+      {/* Модалка первого запуска */}
+      {showOnboarding && (
+        <div
+          className="absolute inset-0 z-50 flex items-end sm:items-center justify-center
+                  bg-black/40 p-4"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-lg">
+            <h2 className="text-xl font-semibold mb-2">
+              Постройте своё первое здание
+            </h2>
+            <p className="text-sm text-slate-600 mb-4">
+              Нажмите на любую клетку карты &rarr; выберите здание в меню. За
+              постройку вы получите монеты и откроете базовые механики.
+            </p>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 rounded-xl bg-slate-900 text-white py-2"
+                onClick={() => closeOnboarding(true)}
+              >
+                Понятно
+              </button>
+              <button
+                className="flex-1 rounded-xl bg-white ring-1 ring-slate-200 py-2"
+                onClick={() => closeOnboarding()}
+              >
+                Позже
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-hidden ring-1 ring-slate-200 bg-white">
+        <div className="h-[calc(100dvh-var(--bottom-nav-h,96px))] fixed">
           <svg
             ref={svgRef}
             viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
@@ -362,7 +479,7 @@ export default function CityPage() {
           </svg>
 
           <div className="absolute bottom-3 right-3 text-xs text-slate-600 bg-white/80 backdrop-blur rounded-lg px-2 py-1 ring-1 ring-slate-200">
-            Пан — потяни / Зум — колесо / Пинч — выключен
+            Пан — потяни / Зум — колесо / Пинч — выключен (на телефонах)
           </div>
         </div>
       </div>

@@ -8,13 +8,6 @@ import {
   IconShop as IconWallet,
 } from "./Icons";
 
-/**
- * Animated bottom navigation bar. When a tab is active, a circular indicator
- * smoothly slides to that tab and raises the icon slightly. This component
- * uses refs to measure tab positions and applies CSS transitions to the
- * indicator for fluid movement. The active icon is also raised with a
- * translate‑y transformation.
- */
 export default function BottomNav() {
   const location = useLocation();
   // Define navigation items
@@ -35,6 +28,18 @@ export default function BottomNav() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Force re‑compute on window resize
   const [_, setDims] = useState<number>(0);
+
+  const navRef = React.useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const setVar = () => {
+      const h = navRef.current?.getBoundingClientRect().height ?? 96;
+      document.documentElement.style.setProperty("--bottom-nav-h", `${h}px`);
+    };
+    setVar();
+    window.addEventListener("resize", setVar);
+    return () => window.removeEventListener("resize", setVar);
+  }, []);
 
   // Determine active index based on location
   const activeIndex = items.findIndex(({ to }) => {
@@ -72,6 +77,7 @@ export default function BottomNav() {
 
   return (
     <nav
+      ref={navRef}
       className="fixed bottom-0 left-0 right-0 z-10"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >

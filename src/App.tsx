@@ -20,7 +20,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen relative app-shell bg-gradient-to-b from-slate-50 to-white text-slate-900">
-      <main className="pb-24 max-w-md mx-auto w-full">
+      <main className="min-h-[100dvh] max-w-md mx-auto w-full pb-[var(--bottom-nav-h,96px)]">
         <Suspense
           fallback={
             <div className="p-6 animate-pulse">

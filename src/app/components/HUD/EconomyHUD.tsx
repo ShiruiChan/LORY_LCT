@@ -8,7 +8,7 @@ export function EconomyHUD({
   coinsPerSec: number;
 }) {
   return (
-    <div className="fixed top-18 right-5 z-50">
+    <div className="fixed top-5 right-5 z-50">
       <div className="rounded-2xl bg-white/80 backdrop-blur shadow px-4 py-2 text-slate-800">
         <div className="text-xs uppercase tracking-wide opacity-70">Баланс</div>
         <div className="text-xl font-semibold">
