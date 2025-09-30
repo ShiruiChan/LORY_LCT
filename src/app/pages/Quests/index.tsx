@@ -18,11 +18,8 @@ export default function QuestsPage() {
   const [isClosingAdmin, setIsClosingAdmin] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingQuest, setEditingQuest] = useState<Quest | undefined>(
-    undefined
-  );
+  const [editingQuest, setEditingQuest] = useState<Quest | undefined>(undefined);
 
-  // безопасный вызов fetch (если вдруг заменишь стор)
   useEffect(() => {
     if (typeof fetch === "function") {
       fetch().catch(console.error);
@@ -31,18 +28,15 @@ export default function QuestsPage() {
 
   // Группы для пользовательского экрана
   const dailyQuests = useMemo(
-    () =>
-      quests.filter((q) => q.questType === "regular" && q.period === "daily"),
+    () => quests.filter((q) => q.questType === "regular" && q.period === "daily"),
     [quests]
   );
   const weeklyQuests = useMemo(
-    () =>
-      quests.filter((q) => q.questType === "regular" && q.period === "weekly"),
+    () => quests.filter((q) => q.questType === "regular" && q.period === "weekly"),
     [quests]
   );
   const monthlyQuests = useMemo(
-    () =>
-      quests.filter((q) => q.questType === "regular" && q.period === "monthly"),
+    () => quests.filter((q) => q.questType === "regular" && q.period === "monthly"),
     [quests]
   );
 
@@ -83,61 +77,59 @@ export default function QuestsPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[linear-gradient(180deg,#f8fafc,white)]">
-      <div className="pointer-events-none absolute -top-24 right-[-120px] h-[360px] w-[360px] rounded-full bg-emerald-200/40 blur-3xl" />
-
-      {/* Шапка */}
-      <div className="sticky top-0 z-20 bg-gradient-to-r from-emerald-600 to-blue-600 text-white shadow-md">
+    <div className="relative min-h-screen bg-white">
+      {/* Нейтральная шапка */}
+      <div className="bg-white">
         <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-xl bg-white/20 grid place-items-center font-bold">
-              Q
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight">Квесты</h1>
-              <p className="text-xs opacity-80">
-                Ежедневные · Еженедельные · Ежемесячные
-              </p>
-            </div>
-          </div>
+          <h1 className="text-lg font-semibold">Квесты</h1>
 
-          {/* только тумблер админки (кнопки «Добавить» здесь больше нет) */}
-          <div className="flex flex-col items-end">
-            <span className="text-[11px] font-medium opacity-90 mb-1">
-              Админ-панель
-            </span>
-            <button
-              onClick={() => setIsAdminOpen((v) => !v)}
-              className={`relative inline-flex h-8 w-14 items-center rounded-full transition
-                ${
-                  isAdminOpen ? "bg-white/90" : "bg-white/25 hover:bg-white/35"
-                }`}
-              aria-pressed={isAdminOpen}
-              aria-label="Переключить админ-панель"
-            >
-              <span
-                className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform
-                ${
-                  isAdminOpen
-                    ? "translate-x-6 bg-emerald-600 shadow-emerald-600/30"
-                    : ""
-                }`}
-              />
-              <span className="sr-only">Админ-панель</span>
-            </button>
-          </div>
+          {/* только тумблер админки */}
+          <button
+            onClick={() => setIsAdminOpen((v) => !v)}
+            className={`relative inline-flex h-6 w-12 items-center rounded-full transition
+              ${isAdminOpen ? "bg-emerald-600" : "bg-slate-300"}`}
+            aria-pressed={isAdminOpen}
+            aria-label="Переключить админ-панель"
+          >
+            <span
+              className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform
+                ${isAdminOpen ? "translate-x-6" : ""}`}
+            />
+            <span className="sr-only">Админ-панель</span>
+          </button>
         </div>
       </div>
 
-      {/* Пользовательский контент — без тегов и без «запланированных» */}
+      {/* Пользовательский контент */}
       <div
         className={`transition-all duration-300 ${
-          isAdminOpen
-            ? "opacity-40 blur-[1px] pointer-events-none"
-            : "opacity-100 blur-0"
+          isAdminOpen ? "opacity-40 blur-[1px] pointer-events-none" : "opacity-100 blur-0"
         }`}
       >
         <div className="mx-auto max-w-4xl px-4 py-4">
+          {/* ИВЕНТЫ — СВЕРХУ И ВЫДЕЛЕНЫ */}
+          <section className="mt-2">
+            <div className="flex items-end justify-between">
+              <h2 className="text-sm font-semibold text-violet-700">Ивенты (сейчас идут)</h2>
+              <span className="text-[11px] text-violet-600/80">
+                Особые события с повышенными наградами
+              </span>
+            </div>
+
+            {eventsActive.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {eventsActive.map((q) => (
+                  <QuestCard key={q.id} quest={q} />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-center text-sm text-slate-500 bg-white rounded-xl border border-dashed border-violet-300 py-6">
+                Нет активных ивентов
+              </p>
+            )}
+          </section>
+
+          {/* Обычные квесты */}
           <Section
             title="Ежедневные"
             subtitle={`Обновляются в ${periodUpdateTimes.daily}`}
@@ -156,41 +148,17 @@ export default function QuestsPage() {
             items={monthlyQuests}
             emptyText="Пока нет ежемесячных квестов"
           />
-
-          {/* Ивенты — показываем только активные */}
-          <div className="mt-10">
-            <h2 className="text-sm font-semibold text-slate-700">Ивенты</h2>
-            {eventsActive.length > 0 ? (
-              <div className="mt-2 space-y-2">
-                {eventsActive.map((q) => (
-                  <QuestCard key={q.id} quest={q} />
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-center text-sm text-slate-500 bg-white/60 rounded-xl border border-slate-200 py-6">
-                Нет активных ивентов
-              </p>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Админ-панель: здесь есть +Добавить, теги и блоки «Запланированные» */}
+      {/* Админ-панель */}
       {isAdminOpen && (
-        <div
-          className={`fixed inset-0 z-30 ${
-            isClosingAdmin ? "admin-page-closing" : "admin-page"
-          }`}
-        >
-          <AdminPanel
-            onAdd={openCreate}
-            onEdit={openEdit}
-            onClose={handleCloseAdmin}
-          />
+        <div className={`fixed inset-0 z-30 ${isClosingAdmin ? "admin-page-closing" : "admin-page"}`}>
+          <AdminPanel onAdd={openCreate} onEdit={openEdit} onClose={handleCloseAdmin} />
         </div>
       )}
 
-      {/* Модалка создания/редактирования (инициализируется существующими данными при редактировании) */}
+      {/* Модалка */}
       <QuestModal
         open={modalOpen}
         initial={editingQuest}
@@ -199,21 +167,11 @@ export default function QuestsPage() {
       />
 
       <style>{`
-  @keyframes slideDown {
-    from { transform: translateY(100%); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-  }
-  @keyframes slideUp {
-    from { transform: translateY(0);    opacity: 1; }
-    to   { transform: translateY(-100%); opacity: 0; }
-  }
-  .admin-page {
-    animation: slideDown 420ms cubic-bezier(.22,.98,.29,.99);
-  }
-  .admin-page-closing {
-    animation: slideUp 320ms cubic-bezier(.2,.8,.2,1);
-  }
-`}</style>
+        @keyframes slideDown { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideUp   { from { transform: translateY(0); opacity: 1; }   to { transform: translateY(-100%); opacity: 0; } }
+        .admin-page { animation: slideDown 420ms cubic-bezier(.22,.98,.29,.99); }
+        .admin-page-closing { animation: slideUp 320ms cubic-bezier(.2,.8,.2,1); }
+      `}</style>
     </div>
   );
 }
@@ -233,9 +191,7 @@ function Section({
     <section className="mt-6">
       <div className="flex items-end justify-between">
         <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
-        {subtitle && (
-          <span className="text-[11px] text-slate-500">{subtitle}</span>
-        )}
+        {subtitle && <span className="text-[11px] text-slate-500">{subtitle}</span>}
       </div>
       {items.length > 0 ? (
         <div className="mt-2 space-y-2">
@@ -244,7 +200,7 @@ function Section({
           ))}
         </div>
       ) : (
-        <p className="mt-3 text-center text-sm text-slate-500 bg-white/60 rounded-xl border border-slate-200 py-6">
+        <p className="mt-3 text-center text-sm text-slate-500 bg-white rounded-xl border border-slate-200 py-6">
           {emptyText}
         </p>
       )}

@@ -31,7 +31,7 @@ const mockQuests: Quest[] = [
     id: 'd2',
     title: 'Прочитать 10 страниц',
     description: 'Любая книга или статья',
-    status: 'locked',
+    status: 'completed',
     progress: 0,
     questType: 'regular',
     period: 'daily',
@@ -39,6 +39,19 @@ const mockQuests: Quest[] = [
     rewardValue: 30,
     tags: ['чтение'],
   },
+    {
+    id: 'd3',
+    title: 'Прочитать 10 страниц',
+    description: 'Любая книга или статья',
+    status: 'active',
+    progress: 0,
+    questType: 'regular',
+    period: 'daily',
+    rewardType: 'coins',
+    rewardValue: 30,
+    tags: ['чтение'],
+  },
+
 
   // WEEKLY
   {
