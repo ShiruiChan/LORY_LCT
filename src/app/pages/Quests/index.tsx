@@ -1,150 +1,253 @@
-import React, { useEffect, useState } from "react";
-import { useQuests, Quest, QuestPeriod } from "../../store/questStore";
+import React, { useEffect, useMemo, useState } from "react";
+import { useQuests } from "./questStore";
+import { Quest, QuestPeriod } from "./types";
 import { QuestCard } from "./components/QuestCard";
 import { AdminPanel } from "./components/AdminPanel";
 import { QuestModal } from "./components/QuestModal";
 
-// Время обновления квестов в тексте уведомлений
-const periodUpdateTimes = {
+const periodUpdateTimes: Record<QuestPeriod, string> = {
   daily: "00:00",
   weekly: "Понедельник, 00:00",
   monthly: "1-е число, 00:00",
 };
 
 export default function QuestsPage() {
-  const { quests, fetch, start, claim } = useQuests();
+  const { quests, fetch, addQuest, updateQuest } = useQuests();
+
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [modal, setModal] = useState<{
-    mode: "create" | "edit";
-    quest?: Quest;
-  } | null>(null);
+  const [isClosingAdmin, setIsClosingAdmin] = useState(false);
 
-  // Периодически обновляем квесты (например, каждые 30 секунд)
-  useEffect(() => {
-    fetch();
-    const t = setInterval(fetch, 30_000);
-    return () => clearInterval(t);
-  }, [fetch]);
-
-  // Группируем квесты по периоду и скрываем заблокированные
-  const periodOrder: QuestPeriod[] = ["daily", "weekly", "monthly"];
-  const grouped = periodOrder.reduce((acc, period) => {
-    acc[period] = quests.filter(
-      (q) => q.period === period && q.status !== "locked"
-    );
-    return acc;
-  }, {} as Record<QuestPeriod, Quest[]>);
-  const hasVisibleQuests = Object.values(grouped).some(
-    (group) => group.length > 0
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingQuest, setEditingQuest] = useState<Quest | undefined>(
+    undefined
   );
 
+  // безопасный вызов fetch (если вдруг заменишь стор)
+  useEffect(() => {
+    if (typeof fetch === "function") {
+      fetch().catch(console.error);
+    }
+  }, [fetch]);
+
+  // Группы для пользовательского экрана
+  const dailyQuests = useMemo(
+    () =>
+      quests.filter((q) => q.questType === "regular" && q.period === "daily"),
+    [quests]
+  );
+  const weeklyQuests = useMemo(
+    () =>
+      quests.filter((q) => q.questType === "regular" && q.period === "weekly"),
+    [quests]
+  );
+  const monthlyQuests = useMemo(
+    () =>
+      quests.filter((q) => q.questType === "regular" && q.period === "monthly"),
+    [quests]
+  );
+
+  const now = new Date();
+  const eventsActive = useMemo(
+    () =>
+      quests.filter(
+        (q) =>
+          q.questType === "event" &&
+          q.startsAt &&
+          new Date(q.startsAt) <= now &&
+          (!q.endsAt || new Date(q.endsAt) >= now)
+      ),
+    [quests, now]
+  );
+
+  const handleCloseAdmin = () => {
+    setIsClosingAdmin(true);
+    setTimeout(() => {
+      setIsAdminOpen(false);
+      setIsClosingAdmin(false);
+    }, 320);
+  };
+
+  const openCreate = () => {
+    setEditingQuest(undefined);
+    setModalOpen(true);
+  };
+  const openEdit = (q: Quest) => {
+    setEditingQuest(q);
+    setModalOpen(true);
+  };
+
+  const handleSubmitQuest = (q: Quest) => {
+    const exists = quests.some((x) => x.id === q.id);
+    if (exists) updateQuest(q);
+    else addQuest(q);
+  };
+
   return (
-    <div className="relative min-h-screen bg-gray-50">
-      {/* Контент подложки — затемняется, когда открыта админ‑панель */}
-      <div
-        className={`transition-opacity duration-300 ${
-          isAdminOpen ? "opacity-40 pointer-events-none" : "opacity-100"
-        }`}
-      >
-        {/* Заголовок и переключатель админ‑панели */}
-        <div className="top-0 z-10 bg-white p-4 flex justify-between items-start">
-          <h1 className="text-xl font-bold text-slate-800">Квесты</h1>
-          <div className="flex flex-col items-end">
-            <span className="text-xs font-medium text-slate-700 mb-1">
-              Админ‑панель
-            </span>
-            <div
-              className="relative w-8 h-4 flex items-center rounded-full bg-slate-400 cursor-pointer"
-              onClick={() => setIsAdminOpen(!isAdminOpen)}
-            >
-              <div
-                className={`absolute w-3 h-3 rounded-full bg-white shadow transition-transform duration-500 ${
-                  isAdminOpen ? "translate-x-8" : "translate-x-0.5"
-                }`}
-              />
+    <div className="relative min-h-screen bg-[linear-gradient(180deg,#f8fafc,white)]">
+      <div className="pointer-events-none absolute -top-24 right-[-120px] h-[360px] w-[360px] rounded-full bg-emerald-200/40 blur-3xl" />
+
+      {/* Шапка */}
+      <div className="sticky top-0 z-20 bg-gradient-to-r from-emerald-600 to-blue-600 text-white shadow-md">
+        <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-xl bg-white/20 grid place-items-center font-bold">
+              Q
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold leading-tight">Квесты</h1>
+              <p className="text-xs opacity-80">
+                Ежедневные · Еженедельные · Ежемесячные
+              </p>
             </div>
           </div>
-        </div>
 
-        {/* Информация о времени обновления квестов */}
-        <div className="px-4 pb-4 text-xs text-slate-500 space-y-1">
-          <p>🕗 Ежедневные квесты обновляются в {periodUpdateTimes.daily}</p>
-          <p>📅 Еженедельные — {periodUpdateTimes.weekly}</p>
-          <p>📆 Ежемесячные — {periodUpdateTimes.monthly}</p>
-        </div>
-
-        {/* Список квестов */}
-        <div className="p-4 pt-0 space-y-6">
-          {hasVisibleQuests ? (
-            periodOrder.map((period) => {
-              const questsInPeriod = grouped[period];
-              if (questsInPeriod.length === 0) return null;
-              return (
-                <div key={period}>
-                  <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-2">
-                    {period === "daily"
-                      ? "Ежедневные"
-                      : period === "weekly"
-                      ? "Еженедельные"
-                      : "Ежемесячные"}
-                  </h2>
-                  <div className="space-y-3">
-                    {questsInPeriod.map((q) => (
-                      <QuestCard
-                        key={q.id}
-                        quest={q}
-                        isAdmin={false}
-                        onStart={() => start(q.id)}
-                        onClaim={() => claim(q.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="text-center py-10 text-slate-500">
-              Квесты закончились. Скоро появятся новые!
-            </div>
-          )}
+          {/* только тумблер админки (кнопки «Добавить» здесь больше нет) */}
+          <div className="flex flex-col items-end">
+            <span className="text-[11px] font-medium opacity-90 mb-1">
+              Админ-панель
+            </span>
+            <button
+              onClick={() => setIsAdminOpen((v) => !v)}
+              className={`relative inline-flex h-8 w-14 items-center rounded-full transition
+                ${
+                  isAdminOpen ? "bg-white/90" : "bg-white/25 hover:bg-white/35"
+                }`}
+              aria-pressed={isAdminOpen}
+              aria-label="Переключить админ-панель"
+            >
+              <span
+                className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform
+                ${
+                  isAdminOpen
+                    ? "translate-x-6 bg-emerald-600 shadow-emerald-600/30"
+                    : ""
+                }`}
+              />
+              <span className="sr-only">Админ-панель</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Админ‑панель, выезжающая сверху */}
+      {/* Пользовательский контент — без тегов и без «запланированных» */}
+      <div
+        className={`transition-all duration-300 ${
+          isAdminOpen
+            ? "opacity-40 blur-[1px] pointer-events-none"
+            : "opacity-100 blur-0"
+        }`}
+      >
+        <div className="mx-auto max-w-4xl px-4 py-4">
+          <Section
+            title="Ежедневные"
+            subtitle={`Обновляются в ${periodUpdateTimes.daily}`}
+            items={dailyQuests}
+            emptyText="Пока нет ежедневных квестов"
+          />
+          <Section
+            title="Еженедельные"
+            subtitle={`Обновляются: ${periodUpdateTimes.weekly}`}
+            items={weeklyQuests}
+            emptyText="Пока нет еженедельных квестов"
+          />
+          <Section
+            title="Ежемесячные"
+            subtitle={`Обновляются: ${periodUpdateTimes.monthly}`}
+            items={monthlyQuests}
+            emptyText="Пока нет ежемесячных квестов"
+          />
+
+          {/* Ивенты — показываем только активные */}
+          <div className="mt-10">
+            <h2 className="text-sm font-semibold text-slate-700">Ивенты</h2>
+            {eventsActive.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {eventsActive.map((q) => (
+                  <QuestCard key={q.id} quest={q} />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-center text-sm text-slate-500 bg-white/60 rounded-xl border border-slate-200 py-6">
+                Нет активных ивентов
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Админ-панель: здесь есть +Добавить, теги и блоки «Запланированные» */}
       {isAdminOpen && (
-        <AdminPanel
-          onClose={() => setIsAdminOpen(false)}
-          onEdit={(q) => setModal({ mode: "edit", quest: q })}
-          onAdd={() => setModal({ mode: "create" })}
-        />
+        <div
+          className={`fixed inset-0 z-30 ${
+            isClosingAdmin ? "admin-page-closing" : "admin-page"
+          }`}
+        >
+          <AdminPanel
+            onAdd={openCreate}
+            onEdit={openEdit}
+            onClose={handleCloseAdmin}
+          />
+        </div>
       )}
 
-      {/* Модальное окно для создания/редактирования */}
-      {modal && (
-        <QuestModal
-          mode={modal.mode}
-          initialData={modal.quest}
-          onClose={() => setModal(null)}
-        />
-      )}
+      {/* Модалка создания/редактирования (инициализируется существующими данными при редактировании) */}
+      <QuestModal
+        open={modalOpen}
+        initial={editingQuest}
+        onClose={() => setModalOpen(false)}
+        onSubmit={handleSubmitQuest}
+      />
 
-      {/* Локальные стили для анимации выезда админ‑панели */}
       <style>{`
-        @keyframes slideDown {
-          from { transform: translateY(-100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { transform: translateY(0); opacity: 1; }
-          to { transform: translateY(-100%); opacity: 0; }
-        }
-        .admin-page {
-          animation: slideDown 0.5s ease-out;
-        }
-        .admin-page-closing {
-          animation: slideUp 0.5s ease-in;
-        }
-      `}</style>
+  @keyframes slideDown {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { transform: translateY(0);    opacity: 1; }
+    to   { transform: translateY(-100%); opacity: 0; }
+  }
+  .admin-page {
+    animation: slideDown 420ms cubic-bezier(.22,.98,.29,.99);
+  }
+  .admin-page-closing {
+    animation: slideUp 320ms cubic-bezier(.2,.8,.2,1);
+  }
+`}</style>
     </div>
+  );
+}
+
+function Section({
+  title,
+  subtitle,
+  items,
+  emptyText,
+}: {
+  title: string;
+  subtitle?: string;
+  items: Quest[];
+  emptyText: string;
+}) {
+  return (
+    <section className="mt-6">
+      <div className="flex items-end justify-between">
+        <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+        {subtitle && (
+          <span className="text-[11px] text-slate-500">{subtitle}</span>
+        )}
+      </div>
+      {items.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {items.map((q) => (
+            <QuestCard key={q.id} quest={q} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-center text-sm text-slate-500 bg-white/60 rounded-xl border border-slate-200 py-6">
+          {emptyText}
+        </p>
+      )}
+    </section>
   );
 }

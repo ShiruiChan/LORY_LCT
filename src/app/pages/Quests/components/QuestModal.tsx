@@ -1,201 +1,315 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  useQuests,
   Quest,
   QuestPeriod,
-  QuestInput,
-} from "../../../store/questStore";
+  QuestStatus,
+  QuestType,
+  RewardType,
+} from "../types";
+import { motion, AnimatePresence } from "framer-motion";
 
-interface QuestModalProps {
-  mode: "create" | "edit";
-  initialData?: Quest;
+export const QuestModal: React.FC<{
+  open: boolean;
+  initial?: Partial<Quest>;
   onClose: () => void;
-}
+  onSubmit: (q: Quest) => void;
+}> = ({ open, initial = {}, onClose, onSubmit }) => {
+  const DEFAULT_STATUS: QuestStatus = "available";
+  const DEFAULT_TYPE: QuestType = "regular";
+  const DEFAULT_REWARD_TYPE: RewardType = "coins";
 
-export const QuestModal: React.FC<QuestModalProps> = ({
-  mode,
-  initialData,
-  onClose,
-}) => {
-  const { addQuest, updateQuest } = useQuests();
-
-  /* ---------- состояния формы (без изменений) ---------- */
-  const formatDateForInput = (iso?: string): string => {
-    if (!iso) return "";
-    return new Date(iso).toISOString().split("T")[0];
-  };
-
-  const [title, setTitle] = useState(initialData?.title || "");
-  const [description, setDescription] = useState(
-    initialData?.description || ""
+  const [title, setTitle] = useState(initial.title ?? "");
+  const [description, setDescription] = useState(initial.description ?? "");
+  const [questType, setQuestType] = useState<QuestType>(
+    initial.questType ?? DEFAULT_TYPE
   );
-  const [rewardCoins, setRewardCoins] = useState(
-    initialData?.rewardCoins || 100
+  const [status, setStatus] = useState<QuestStatus>(
+    initial.status ?? DEFAULT_STATUS
   );
-  const [period, setPeriod] = useState<QuestPeriod>(
-    initialData?.period || "daily"
+  const [progress, setProgress] = useState<number>(initial.progress ?? 0);
+
+  const [rewardType, setRewardType] = useState<RewardType>(
+    initial.rewardType ?? DEFAULT_REWARD_TYPE
   );
-  const [tags, setTags] = useState<string[]>(initialData?.tags || []);
-  const [endsAt, setEndsAt] = useState(formatDateForInput(initialData?.endsAt));
+  const [rewardValue, setRewardValue] = useState<number>(
+    initial.rewardValue ?? 0
+  );
 
-  /* ---------- анимация: появление / исчезновение ---------- */
-  const [isVisible, setIsVisible] = useState(false);
+  const [period, setPeriod] = useState<QuestPeriod | undefined>(initial.period);
+  const [startsAt, setStartsAt] = useState<string>(initial.startsAt ?? "");
+  const [endsAt, setEndsAt] = useState<string>(initial.endsAt ?? "");
 
+  const [tags, setTags] = useState<string>((initial.tags ?? []).join(", "));
+
+  // ⬇️ синхронизируем форму при смене initial (редактирование другого квеста)
   useEffect(() => {
-    // запускаем анимацию появления сразу после монтирования
-    requestAnimationFrame(() => setIsVisible(true));
-  }, []);
+    setTitle(initial.title ?? "");
+    setDescription(initial.description ?? "");
+    setQuestType((initial.questType as QuestType) ?? DEFAULT_TYPE);
+    setStatus((initial.status as QuestStatus) ?? DEFAULT_STATUS);
+    setProgress(initial.progress ?? 0);
 
-  const handleClose = () => {
-    setIsVisible(false); // 1. начинаем убирать
-    setTimeout(onClose, 300); // 2. через 300 мс просим родителя размонтировать
-  };
+    setRewardType((initial.rewardType as RewardType) ?? DEFAULT_REWARD_TYPE);
+    setRewardValue(initial.rewardValue ?? 0);
 
-  /* ---------- остальные хэндлеры (без изменений) ---------- */
-  const handleTagInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && e.currentTarget.value.trim()) {
-      const newTag = e.currentTarget.value.trim();
-      if (!tags.includes(newTag)) setTags([...tags, newTag]);
-      e.currentTarget.value = "";
-    }
-  };
-  const removeTag = (tag: string) => setTags(tags.filter((t) => t !== tag));
+    setPeriod(initial.period as QuestPeriod | undefined);
+    setStartsAt(initial.startsAt ?? "");
+    setEndsAt(initial.endsAt ?? "");
+    setTags((initial.tags ?? []).join(", "));
+  }, [initial]);
+
+  const isRegular = questType === "regular";
+  const isEvent = questType === "event";
+
+  const canSubmit = useMemo(() => {
+    if (!title.trim()) return false;
+    if (rewardValue < 0) return false;
+    if (isRegular && !period) return false;
+    if (isEvent && startsAt && endsAt && new Date(endsAt) < new Date(startsAt))
+      return false;
+    return true;
+  }, [title, rewardValue, isRegular, isEvent, period, startsAt, endsAt]);
 
   const handleSubmit = () => {
-    if (!title.trim()) return;
-    // Convert endsAt to an ISO string if provided
-    const endsAtIso = endsAt ? `${endsAt}T00:00:00Z` : undefined;
-    // Assemble quest input.  Goal defaults to existing goal or 1 when editing
-    const questInput: QuestInput = {
+    const id = initial.id ?? crypto.randomUUID();
+    const cleanedTags = tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const q: Quest = {
+      id,
       title: title.trim(),
-      description: description || undefined,
-      rewardCoins,
-      period,
-      tags,
-      endsAt: endsAtIso,
-      goal: mode === "create" ? 1 : initialData?.goal ?? 1,
+      description: description.trim() || undefined,
+      questType,
+      status,
+      progress: Math.min(1, Math.max(0, progress)),
+      rewardType,
+      rewardValue: Number(rewardValue),
+      period: isRegular ? period : undefined,
+      startsAt: isEvent || startsAt ? startsAt || undefined : undefined,
+      endsAt: isEvent || endsAt ? endsAt || undefined : undefined,
+      tags: cleanedTags,
     };
-    mode === "create"
-      ? addQuest(questInput)
-      : updateQuest(initialData!.id, questInput);
-    handleClose();
+
+    onSubmit(q);
+    onClose();
   };
 
-  /* ---------- рендер ---------- */
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center"
-      style={{
-        transition: "opacity 300ms ease-out",
-        opacity: isVisible ? 1 : 0,
-      }}
-    >
-      {/* фон-затемнение */}
-      <div
-        className="absolute inset-0 backdrop-blur-sm bg-black/40"
-        onClick={handleClose}
-        style={{
-          transition: "opacity 300ms ease-out",
-          opacity: isVisible ? 1 : 0,
-        }}
-      />
-
-      {/* панель */}
-      <div
-        className="relative w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-4 max-h-[80vh] overflow-y-auto"
-        style={{
-          transition: "transform 300ms ease-out, opacity 300ms ease-out",
-          transform: isVisible
-            ? "translateY(0) scale(1)"
-            : "translateY(100%) scale(0.96)",
-          opacity: isVisible ? 1 : 0,
-        }}
-      >
-        <h3 className="font-bold mb-4">
-          {mode === "create" ? "Добавить квест" : "Редактировать квест"}
-        </h3>
-
-        <div className="space-y-3">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Название *"
-            className="w-full p-2 border rounded"
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           />
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Описание"
-            rows={2}
-            className="w-full p-2 border rounded"
-          />
-          <input
-            type="date"
-            value={endsAt}
-            onChange={(e) => setEndsAt(e.target.value)}
-            className="w-full p-2 border rounded"
-          />
-
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="number"
-              min="1"
-              value={rewardCoins}
-              onChange={(e) => setRewardCoins(Number(e.target.value))}
-              placeholder="Награда (монеты)"
-              className="p-2 border rounded"
-            />
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as QuestPeriod)}
-              className="p-2 border rounded"
-            >
-              <option value="daily">Ежедневный</option>
-              <option value="weekly">Еженедельный</option>
-              <option value="monthly">Ежемесячный</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm text-slate-600 block mb-1">
-              Теги (Enter)
-            </label>
-            <input
-              onKeyDown={handleTagInput}
-              placeholder="Например: обучение"
-              className="w-full p-2 border rounded"
-            />
-            <div className="flex flex-wrap gap-1 mt-1">
-              {tags.map((tag, i) => (
-                <span
-                  key={i}
-                  className="text-xs bg-slate-200 px-2 py-0.5 rounded flex items-center"
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+          >
+            <div className="w-full max-w-[520px] bg-white rounded-2xl shadow-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold">
+                  {initial.id ? "Редактирование квеста" : "Новый квест"}
+                </h3>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-full bg-slate-100"
                 >
-                  {tag}
-                  <button
-                    onClick={() => removeTag(tag)}
-                    className="ml-1 text-slate-500 hover:text-slate-800"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
+                  ×
+                </button>
+              </div>
 
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleSubmit}
-              className="flex-1 bg-emerald-600 text-white py-2 rounded font-medium"
-            >
-              {mode === "create" ? "Добавить" : "Сохранить"}
-            </button>
-            <button onClick={handleClose} className="px-4 py-2 text-slate-600">
-              Отмена
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+              {/* Форма */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="col-span-2 text-xs text-slate-600">
+                    Название
+                  </label>
+                  <input
+                    className="col-span-2 border rounded px-3 py-2"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Например: Выполнить тренировку"
+                  />
+
+                  <label className="col-span-2 text-xs text-slate-600">
+                    Описание
+                  </label>
+                  <textarea
+                    className="col-span-2 border rounded px-3 py-2"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Краткие детали задания"
+                  />
+
+                  <div>
+                    <label className="text-xs text-slate-600">Тип</label>
+                    <select
+                      className="w-full border rounded px-2 py-2"
+                      value={questType}
+                      onChange={(e) =>
+                        setQuestType(e.target.value as QuestType)
+                      }
+                    >
+                      <option value="regular">Обычный</option>
+                      <option value="event">Ивент</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600">Статус</label>
+                    <select
+                      className="w-full border rounded px-2 py-2"
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as QuestStatus)}
+                    >
+                      <option value="locked">Заблокирован</option>
+                      <option value="available">Доступен</option>
+                      <option value="active">Активен</option>
+                      <option value="completed">Завершён</option>
+                      <option value="rewarded">Награждён</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600">
+                      Награда — тип
+                    </label>
+                    <select
+                      className="w-full border rounded px-2 py-2"
+                      value={rewardType}
+                      onChange={(e) =>
+                        setRewardType(e.target.value as RewardType)
+                      }
+                    >
+                      <option value="coins">Монеты</option>
+                      <option value="discount">Скидка (%)</option>
+                      <option value="coupon">Купон (код/ID)</option>
+                      <option value="booster">Бустер (множитель)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600">
+                      Награда — значение
+                    </label>
+                    <input
+                      className="w-full border rounded px-3 py-2"
+                      type="number"
+                      min={0}
+                      value={rewardValue}
+                      onChange={(e) => setRewardValue(Number(e.target.value))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600">
+                      Прогресс (0..1)
+                    </label>
+                    <input
+                      className="w-full border rounded px-3 py-2"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      max={1}
+                      value={progress}
+                      onChange={(e) => setProgress(Number(e.target.value))}
+                    />
+                  </div>
+
+                  {questType === "regular" && (
+                    <div>
+                      <label className="text-xs text-slate-600">
+                        Период (для обычных)
+                      </label>
+                      <select
+                        className="w-full border rounded px-2 py-2"
+                        value={period ?? ""}
+                        onChange={(e) =>
+                          setPeriod(
+                            (e.target.value || undefined) as
+                              | QuestPeriod
+                              | undefined
+                          )
+                        }
+                      >
+                        <option value="">— выбери период —</option>
+                        <option value="daily">Ежедневный</option>
+                        <option value="weekly">Еженедельный</option>
+                        <option value="monthly">Ежемесячный</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs text-slate-600">
+                      Начало (ISO)
+                    </label>
+                    <input
+                      className="w-full border rounded px-3 py-2"
+                      type="datetime-local"
+                      value={startsAt}
+                      onChange={(e) => setStartsAt(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600">
+                      Конец (ISO)
+                    </label>
+                    <input
+                      className="w-full border rounded px-3 py-2"
+                      type="datetime-local"
+                      value={endsAt}
+                      onChange={(e) => setEndsAt(e.target.value)}
+                    />
+                  </div>
+
+                  <label className="col-span-2 text-xs text-slate-600">
+                    Теги (через запятую)
+                  </label>
+                  <input
+                    className="col-span-2 border rounded px-3 py-2"
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    placeholder="например: спорт, утро, золото"
+                  />
+                </div>
+
+                {!canSubmit && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    Проверь поля: название, период для «обычных», корректность
+                    дат (конец не раньше начала), награда ≥ 0.
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    disabled={!canSubmit}
+                    onClick={handleSubmit}
+                    className="px-3 py-2 rounded bg-emerald-600 disabled:bg-emerald-300 text-white"
+                  >
+                    Сохранить
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="px-3 py-2 rounded bg-slate-200"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
